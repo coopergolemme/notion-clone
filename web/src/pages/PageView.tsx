@@ -1,66 +1,28 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { api } from '../api'
-import AIPanel from '../components/AIPanel'
+import { Stack, Group, TextInput, SegmentedControl, Menu, Button, TagsInput, Divider, Paper } from '@mantine/core'
 import RichEditor from '../components/RichEditor'
 import LatexEditor from '../components/LatexEditor'
 
-type Page = { id: string; title: string; content: string; tags: string[]; format: 'rich'|'latex' }
-
-function renderWikiLinks(text: string, resolver: (title: string) => string | undefined) {
-  const re = /\[\[([^\]]+)\]\]/g;
-  const parts: (string | JSX.Element)[] = [];
-  let lastIndex = 0;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(text))) {
-    const [full, title] = m;
-    const start = m.index;
-    if (start > lastIndex) parts.push(text.slice(lastIndex, start));
-    const href = resolver(title.trim());
-    parts.push(
-      href ? <a key={start} href={href}>{title}</a> : <span key={start}>[[{title}]]</span>
-    );
-    lastIndex = start + full.length;
-  }
-  if (lastIndex < text.length) parts.push(text.slice(lastIndex));
-  return parts;
-}
+type Page = { id: string; title: string; content: string; tags: string[]; format?: 'rich'|'latex' }
 
 export default function PageView() {
   const { id } = useParams()
   const [page, setPage] = useState<Page | null>(null)
-  const [tagsText, setTagsText] = useState('')
-  const [links, setLinks] = useState<{id:string; title:string}[]>([])
   const [format, setFormat] = useState<'rich'|'latex'>('rich')
+  const [tags, setTags] = useState<string[]>([])
 
   async function load() {
     const { data } = await api.get(`/pages/${id}`)
     setPage(data)
+    setFormat((data.format === 'latex' ? 'latex' : 'rich'))
+    setTags(Array.isArray(data.tags) ? data.tags : [])
   }
   useEffect(() => { load() }, [id])
 
-  async function loadLinks() {
-    const { data } = await api.get(`/pages/${id}/links`)
-    setLinks(data)
-  }
-  useEffect(() => { if (id) loadLinks() }, [id])
-
-  function resolveHref(title: string) {
-    const t = title.trim().toLowerCase()
-    const match = links.find(l => l.title.trim().toLowerCase() === t)
-    return match ? `/page/${match.id}` : undefined
-  }
-
-  useEffect(() => {
-    if (page?.tags) setTagsText(page.tags.join(', '))
-    if (page?.format && (page.format === 'rich' || page.format === 'latex')) {
-      setFormat(page.format)
-    }
-  }, [page])
-
   async function save(updates: Partial<Page>) {
     await api.put(`/pages/${id}`, updates)
-    await load()
   }
 
   async function changeFormat(next: 'rich'|'latex') {
@@ -69,76 +31,49 @@ export default function PageView() {
   }
 
   async function exportPdf() {
-    const a = document.createElement('a')
-    a.href = `/export/pdf/${id}`
-    a.target = '_blank'
-    a.click()
+    window.open(`/export/pdf/${id}`, '_blank')
   }
 
-  function parseTags(input: string): string[] {
-    return Array.from(
-      new Set(
-        input
-          .split(',')
-          .map(s => s.trim().toLowerCase())
-          .filter(Boolean)
-      )
-    )
-  }
+  if (!page) return <div>Loading…</div>
 
-  async function saveTags(input: string) {
-    const tags = parseTags(input)
-    await save({ tags })
-  }
-
-  if (!page) return <div>Loading...</div>
   return (
-    <div style={{display:'grid', gridTemplateColumns:'1fr 320px', gap:16}}>
-      <div>
-        <input value={page.title} onChange={e=>save({ title: e.target.value })} style={{fontSize:18, width:'100%'}}/>
-        <div style={{display:'flex', gap:8, alignItems:'center', marginBottom:8}}>
-          <label style={{fontWeight:600}}>Mode:</label>
-          <button
-            onClick={() => changeFormat('rich')}
-            disabled={format==='rich'}
-          >Rich</button>
-          <button
-            onClick={() => changeFormat('latex')}
-            disabled={format==='latex'}
-          >LaTeX</button>
+    <Stack>
+      <Group justify="space-between" align="center">
+        <TextInput
+          value={page.title}
+          onChange={(e)=>{ setPage({...page, title: e.currentTarget.value}); save({ title: e.currentTarget.value }) }}
+          size="md"
+          style={{ flex: 1 }}
+        />
+        <SegmentedControl
+          data={[{ label:'Rich', value:'rich' }, { label:'LaTeX', value:'latex' }]}
+          value={format}
+          onChange={(v)=>changeFormat(v as any)}
+        />
+        <Menu>
+          <Menu.Target><Button variant="light">Export</Button></Menu.Target>
+          <Menu.Dropdown>
+            <Menu.Item onClick={exportPdf}>PDF</Menu.Item>
+          </Menu.Dropdown>
+        </Menu>
+      </Group>
 
-          <div style={{flex:1}} />
-          <button onClick={exportPdf}>Export PDF</button>
-        </div>
-
+      <Paper withBorder p="md" radius="md" shadow="xs">
         {format === 'rich' ? (
-          <RichEditor
-            value={page.content}
-            onChange={(html) => save({ content: html })}
-          />
+          <RichEditor value={page.content} onChange={(html)=>{ setPage({...page, content: html}); save({ content: html }) }} />
         ) : (
-          <LatexEditor
-            value={page.content}
-            onChange={(src) => save({ content: src })}
-          />
+          <LatexEditor value={page.content} onChange={(src)=>{ setPage({...page, content: src}); save({ content: src }) }} />
         )}
-        <div style={{marginTop:8, padding:8, background:'#fafafa', border:'1px solid #eee'}}>
-          <div style={{fontWeight:600, marginBottom:4}}>Preview with links</div>
-          <div>{renderWikiLinks(page.content.replace(/<[^>]+>/g, ''), resolveHref)}</div>
-        </div>
-        <div style={{marginTop:8}}>
-          <label style={{display:'block', fontWeight:600, marginBottom:4}}>Tags (comma-separated)</label>
-          <input
-            value={tagsText}
-            onChange={e => setTagsText(e.target.value)}
-            onBlur={e => saveTags(e.target.value)}
-            placeholder='ai, research, notes'
-            style={{width:'100%'}}
-          />
-        </div>
-      </div>
-      <AIPanel pageId={page.id} />
-    </div>
+      </Paper>
+
+      <Divider my="xs" />
+
+      <TagsInput
+        value={tags}
+        onChange={(next)=>{ setTags(next); save({ tags: next }) }}
+        placeholder="Add tags"
+        splitChars={[',', ' ']}
+      />
+    </Stack>
   )
 }
-
