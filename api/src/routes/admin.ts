@@ -21,6 +21,7 @@ export function registerAdminRoutes(app: FastifyInstance) {
         // Ensure vec is a native array of numbers, not a string
         const embeddingArray = Array.isArray(vec) ? vec.map(Number) : [];
         const embeddingString = `[${embeddingArray.join(",")}]`; // Use square brackets
+        
         await query("update page set embedding=$1::vector where id=$2", [
           embeddingString,
           p.id,

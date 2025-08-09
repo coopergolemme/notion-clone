@@ -42,7 +42,7 @@ export async function embedOpenAI(input: string): Promise<number[] | null> {
     },
     body: JSON.stringify({ model: "text-embedding-3-small", input }),
   });
-  const data: any = await resp.json();
+  const data = await resp.json();
   const vec = data?.data?.[0]?.embedding;
   return Array.isArray(vec) ? vec : null;
 }
