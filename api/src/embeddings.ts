@@ -16,7 +16,7 @@ export const embed: Embedder = async (input) => {
       input
     })
   });
-  const data = await resp.json();
+  const data: any = await resp.json();
   const vec = data?.data?.[0]?.embedding;
   return Array.isArray(vec) ? vec : null;
 };
