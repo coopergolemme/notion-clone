@@ -1,7 +1,8 @@
 import { FastifyInstance } from 'fastify'
 import { query as dbq } from '../db.js'
 import { embed } from '../embeddings.js'
-import { localGenerate, openaiChat } from '../llm.js'
+import { genText } from '../llm.js'
+import { toPgVector } from '../pgvector.js'
 
 type PageLite = { id: string; title: string; snippet?: string }
 
@@ -30,12 +31,13 @@ export function registerSearchRoutes(app: FastifyInstance) {
     // vector part
     let sem: PageLite[] = []
     if (vec) {
+      const pgVec = toPgVector(vec)
       const r = await dbq<PageLite>(`
         SELECT id, title, left(content, 180) as snippet
         FROM page
-        ORDER BY embedding <=> $1
+        ORDER BY embedding <=> $1::vector
         LIMIT 30
-      `, [vec])
+      `, [pgVec])
       sem = r.rows
     }
 
@@ -69,13 +71,14 @@ export function registerSearchRoutes(app: FastifyInstance) {
     }
 
     const vec = await embed(query)
+    const pgVec = toPgVector(vec)
     // fallback to keyword if no vec
-    const top = vec ? await dbq<{ id:string; title:string; content:string }>(`
+    const top = pgVec ? await dbq<{ id:string; title:string; content:string }>(`
       SELECT id, title, content
       FROM page
-      ORDER BY embedding <=> $1
+      ORDER BY embedding <=> $1::vector
       LIMIT $2
-    `, [vec, Math.min(10, Number(k)||5)]) : await dbq(`
+    `, [pgVec, Math.min(10, Number(k)||5)]) : await dbq(`
       SELECT id, title, content FROM page
       WHERE title ILIKE $1 OR content ILIKE $1
       LIMIT $2
@@ -85,11 +88,11 @@ export function registerSearchRoutes(app: FastifyInstance) {
     if (!docs.length) return { answer: 'No relevant pages found.', sources: [] }
 
     const context = docs.map((d, i)=>`[${i+1}] ${d.title}\n${d.content}\n`).join('\n---\n')
-    const sys = 'You are a helpful assistant. Read the provided notes and answer concisely in 4-6 sentences. Cite sources as [#] indices.'
+    const system = 'You are a concise assistant. Answer in 4–6 sentences. Cite sources as [#].'
     const user = `Question: ${query}\n\nNotes:\n${context}\n\nAnswer:`
 
-    let answer = await localGenerate(`${sys}\n${user}`)
-    if (!answer) answer = (await openaiChat(sys, user)) || 'Unable to generate an answer at this time.'
+    let answer = await genText(system, user)
+    if (!answer) answer = 'Unable to generate an answer right now.'
 
     const sources = docs.map((d)=>({ id: d.id, title: d.title }))
     await dbq('INSERT INTO ai_answer_cache(query, answer, sources) VALUES ($1,$2,$3)', [query.trim(), answer, JSON.stringify(sources)])

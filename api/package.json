@@ -16,7 +16,8 @@
     "puppeteer": "^23.3.0",
     "katex": "^0.16.10",
     "keyword-extractor": "^0.0.22",
-    "@xenova/transformers": "^3.0.0"
+    "@xenova/transformers": "^3.0.0",
+    "@google/generative-ai": "^0.17.0"
   },
   "devDependencies": {
     "tsx": "^4.15.7",
