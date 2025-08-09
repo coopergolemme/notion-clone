@@ -14,7 +14,8 @@
     "pg": "^8.11.5",
     "zod": "^3.23.8",
     "puppeteer": "^23.3.0",
-    "katex": "^0.16.10"
+    "katex": "^0.16.10",
+    "keyword-extractor": "^0.0.22"
   },
   "devDependencies": {
     "tsx": "^4.15.7",
