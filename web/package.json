@@ -17,8 +17,7 @@
     "vis-network": "^9.1.9",
     "@tiptap/react": "^2.5.7",
     "@tiptap/starter-kit": "^2.5.7",
-    "katex": "^0.16.10",
-    "vis-network": "^9.1.9"
+    "katex": "^0.16.10"
   },
   "devDependencies": {
     "@types/node": "^20.12.7",
