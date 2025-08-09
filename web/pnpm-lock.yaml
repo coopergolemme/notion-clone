@@ -23,6 +23,9 @@ importers:
       '@mantine/notifications':
         specifier: ^7.12.1
         version: 7.17.8(@mantine/core@7.17.8(@mantine/hooks@7.17.8(react@18.3.1))(@types/react@18.3.23)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@mantine/hooks@7.17.8(react@18.3.1))(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@mantine/spotlight':
+        specifier: ^7.12.1
+        version: 7.17.8(@mantine/core@7.17.8(@mantine/hooks@7.17.8(react@18.3.1))(@types/react@18.3.23)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@mantine/hooks@7.17.8(react@18.3.1))(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       '@tabler/icons-react':
         specifier: ^2.47.0
         version: 2.47.0(react@18.3.1)
@@ -382,6 +385,14 @@ packages:
 
   '@mantine/notifications@7.17.8':
     resolution: {integrity: sha512-/YK16IZ198W6ru/IVecCtHcVveL08u2c8TbQTu/2p26LSIM9AbJhUkrU6H+AO0dgVVvmdmNdvPxcJnfq3S9TMg==}
+    peerDependencies:
+      '@mantine/core': 7.17.8
+      '@mantine/hooks': 7.17.8
+      react: ^18.x || ^19.x
+      react-dom: ^18.x || ^19.x
+
+  '@mantine/spotlight@7.17.8':
+    resolution: {integrity: sha512-hBjajnPetyf95bEa4eHmqsqylCdsBBgYa2hiSuM+fMNwxx2mVR97Tvn7BiMZa+K0A/s5u5KM7+Yi6SnhUjZNQg==}
     peerDependencies:
       '@mantine/core': 7.17.8
       '@mantine/hooks': 7.17.8
@@ -1552,6 +1563,14 @@ snapshots:
       react: 18.3.1
       react-dom: 18.3.1(react@18.3.1)
       react-transition-group: 4.4.5(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+
+  '@mantine/spotlight@7.17.8(@mantine/core@7.17.8(@mantine/hooks@7.17.8(react@18.3.1))(@types/react@18.3.23)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@mantine/hooks@7.17.8(react@18.3.1))(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
+    dependencies:
+      '@mantine/core': 7.17.8(@mantine/hooks@7.17.8(react@18.3.1))(@types/react@18.3.23)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@mantine/hooks': 7.17.8(react@18.3.1)
+      '@mantine/store': 7.17.8(react@18.3.1)
+      react: 18.3.1
+      react-dom: 18.3.1(react@18.3.1)
 
   '@mantine/store@7.17.8(react@18.3.1)':
     dependencies:
