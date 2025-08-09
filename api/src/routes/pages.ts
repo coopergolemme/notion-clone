@@ -40,7 +40,7 @@ export function registerPageRoutes(app: FastifyInstance) {
     try {
       const vec = await embed(`${title}\n\n${content}`);
       if (vec) {
-        await query('update page set embedding = $1 where id=$2', [vec, pageId]);
+        await query('update page set embedding = $1::vector where id=$2', [vec, pageId]);
       }
     } catch {}
 
@@ -92,7 +92,7 @@ export function registerPageRoutes(app: FastifyInstance) {
     if (title || content) {
       const row = await query<{ title: string, content: string }>('select title, content from page where id=$1', [id]);
       const vec = await embed(`${row.rows[0].title}\n\n${row.rows[0].content}`);
-      if (vec) await query('update page set embedding=$1 where id=$2', [vec, id]);
+      if (vec) await query('update page set embedding=$1::vector where id=$2', [vec, id]);
     }
 
     return { ok: true };
