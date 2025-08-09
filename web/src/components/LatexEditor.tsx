@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
-import 'katex/dist/katex.min.css'
 import katex from 'katex'
+import { Text, Paper, Textarea } from '@mantine/core'
 
 function renderLatex(src: string): string {
   // Render $$...$$ block then $...$ inline (mirrors server util)
@@ -32,19 +32,20 @@ export default function LatexEditor({ value, onChange }:{
   return (
     <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:12}}>
       <div>
-        <div style={{fontWeight:600, marginBottom:6}}>LaTeX Source</div>
-        <textarea
+        <Text fw={600} mb={6}>LaTeX Source</Text>
+        <Textarea
           value={src}
-          onChange={e => { setSrc(e.target.value); onChange(e.target.value) }}
+          onChange={e => { setSrc(e.currentTarget.value); onChange(e.currentTarget.value) }}
           rows={22}
-          style={{width:'100%', fontFamily:'ui-monospace, SFMono-Regular, Menlo, monospace', border:'1px solid #ddd', borderRadius:6, padding:8}}
+          autosize
+          minRows={22}
+          styles={{ textarea: { fontFamily:'ui-monospace, SFMono-Regular, Menlo, monospace' } }}
           placeholder={'Type LaTeX here. Use $...$ for inline and $$...$$ for block math.\nExample: $$E=mc^2$$'}
         />
       </div>
       <div>
-        <div style={{fontWeight:600, marginBottom:6}}>Preview</div>
-        <div
-          style={{border:'1px solid #ddd', borderRadius:6, padding:12, minHeight:200, overflowX:'auto'}}
+        <Text fw={600} mb={6}>Preview</Text>
+        <Paper withBorder radius="md" p="md" style={{ minHeight:200, overflowX:'auto' }}
           dangerouslySetInnerHTML={{ __html: preview }}
         />
       </div>
