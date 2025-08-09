@@ -1,26 +1,29 @@
-import keywordExtractor from 'keyword-extractor';
-import { FastifyInstance } from 'fastify';
-import { query } from '../db.js';
-import { embed } from '../embeddings.js';
-import { toPgVector } from '../pgvector.js';
+import keywordExtractor from "keyword-extractor";
+import { FastifyInstance } from "fastify";
+import { query } from "../db.js";
+import { embed } from "../embeddings.js";
+import { toPgVector } from "../pgvector.js";
+import { z } from "zod";
 
 function toKebab(s: string) {
   return s
     .toLowerCase()
     .trim()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '');
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
 }
 
 export function registerAIRoutes(app: FastifyInstance) {
   // RELATED by cosine distance
-  app.post('/ai/related', async (req, reply) => {
+  app.post("/ai/related", async (req, reply) => {
     const { pageId, k } = (req.body as any) ?? {};
     const limit = Math.min(Number(k || 5), 20);
 
-    const base = await query<{ title: string; content: string; embedding: any }>(
-      'select title, content, embedding from page where id=$1', [pageId]
-    );
+    const base = await query<{
+      title: string;
+      content: string;
+      embedding: any;
+    }>("select title, content, embedding from page where id=$1", [pageId]);
     if (!base.rows.length) return [];
 
     // If no stored embedding yet, compute on the fly (and persist)
@@ -30,62 +33,88 @@ export function registerAIRoutes(app: FastifyInstance) {
       if (e && e.length) {
         vec = toPgVector(e);
         if (vec)
-          await query('update page set embedding = $1::vector where id = $2', [vec, pageId]);
+          await query("update page set embedding = $1::vector where id = $2", [
+            vec,
+            pageId,
+          ]);
       } else {
         return []; // cannot compute related without an embedding
       }
     }
 
-    const rows = await query<{ id: string; title: string }>(`
+    const rows = await query<{ id: string; title: string }>(
+      `
       select id, title
       from page
       where id <> $1
       order by embedding <=> $2::vector
       limit $3
-    `, [pageId, vec, limit]);
+    `,
+      [pageId, vec, limit]
+    );
 
     return rows.rows;
   });
 
   // Semantic search by query text (cosine), keyword fallback if embedding fails
-  app.post('/ai/search', async (req, reply) => {
-    const { query: q } = (req.body as any) ?? {};
-    if (!q || typeof q !== 'string') return [];
+  app.post("/ai/search", async (req, reply) => {
+    const SearchInput = z.object({
+      query: z.string().min(1),
+      tags: z.array(z.string()).optional(),
+      dateFrom: z.string().optional(),
+      dateTo: z.string().optional(),
+      authorId: z.string().optional(),
+    });
+    const {
+      query: q,
+      tags,
+      dateFrom,
+      dateTo,
+      authorId,
+    } = SearchInput.parse(req.body ?? {});
+
     const vec = await embed(q);
     if (!vec) {
-      const rows = await query('select id, title from page where title ilike $1 or content ilike $1 limit 10', [`%${q}%`]);
+      const rows = await query(
+        "select id, title from page where title ilike $1 or content ilike $1 limit 10",
+        [`%${q}%`]
+      );
       return rows.rows;
     }
     const pgVec = toPgVector(vec);
-    const rows = await query<{ id: string; title: string }>(`
+    const rows = await query<{ id: string; title: string }>(
+      `
       select id, title
       from page
       order by embedding <=> $1::vector
       limit 10
-    `, [pgVec]);
+    `,
+      [pgVec]
+    );
     return rows.rows;
   });
 
-  app.post('/ai/suggest-tags', async (req, reply) => {
+  app.post("/ai/suggest-tags", async (req, reply) => {
     const { pageId } = (req.body as any) ?? {};
-    if (!pageId) return reply.code(400).send({ error: 'pageId required' });
+    if (!pageId) return reply.code(400).send({ error: "pageId required" });
 
     // fetch page content
     const res = await query<{ title: string; content: string }>(
-      'select title, content from page where id=$1',
+      "select title, content from page where id=$1",
       [pageId]
     );
-    if (!res.rows.length) return reply.code(404).send({ error: 'page not found' });
+    if (!res.rows.length)
+      return reply.code(404).send({ error: "page not found" });
 
     const { title, content } = res.rows[0];
     const text = `${title}\n\n${content}`;
 
     // extract keywords using keyword-extractor
     const keywords = keywordExtractor.extract(text, {
-      language: 'english',
+      language: "english",
       remove_digits: true,
       return_changed_case: true,
-      remove_duplicates: false
+      remove_duplicates: false,
     });
 
     // rank by frequency, filter out very short ones
@@ -103,7 +132,7 @@ export function registerAIRoutes(app: FastifyInstance) {
     const seen = new Set<string>();
     const suggestions: string[] = [];
     for (const raw of ranked) {
-      const clean = toKebab(raw).replace(/^-+|-+$/g, '');
+      const clean = toKebab(raw).replace(/^-+|-+$/g, "");
       if (!clean || clean.length < 3) continue;
       if (seen.has(clean)) continue;
       seen.add(clean);
