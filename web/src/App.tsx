@@ -7,6 +7,7 @@ export default function App() {
         <h1 style={{fontSize:20}}>Notion AI Starter</h1>
         <nav style={{display:'flex', gap:12}}>
           <Link to="/">Table</Link>
+          <Link to="/graph">Graph</Link>
         </nav>
       </header>
       <Outlet/>
