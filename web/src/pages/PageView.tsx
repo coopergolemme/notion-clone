@@ -26,6 +26,12 @@ export default function PageView() {
       <div>
         <input value={page.title} onChange={e=>save({ title: e.target.value })} style={{fontSize:18, width:'100%'}}/>
         <textarea value={page.content} onChange={e=>save({ content: e.target.value })} rows={20} style={{width:'100%', marginTop:8}}/>
+        <input
+          value={page.tags.join(', ')}
+          onChange={e=>save({ tags: e.target.value.split(',').map(t=>t.trim()).filter(Boolean) })}
+          placeholder="Tags (comma separated)"
+          style={{marginTop:8, width:'100%'}}
+        />
       </div>
       <AIPanel pageId={page.id} />
     </div>

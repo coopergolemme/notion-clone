@@ -8,6 +8,7 @@ export default function Home() {
   const [rows, setRows] = useState<Row[]>([])
   const [title, setTitle] = useState('')
   const [content, setContent] = useState('')
+  const [tags, setTags] = useState('')
 
   async function load() {
     const { data } = await api.get<Row[]>('/pages')
@@ -16,8 +17,9 @@ export default function Home() {
   useEffect(() => { load() }, [])
 
   async function create() {
-    await api.post('/pages', { title, content })
-    setTitle(''); setContent('')
+    const tagList = tags.split(',').map(t => t.trim()).filter(Boolean)
+    await api.post('/pages', { title, content, tags: tagList })
+    setTitle(''); setContent(''); setTags('')
     load()
   }
 
@@ -26,6 +28,7 @@ export default function Home() {
       <div style={{display:'grid', gap:8, marginBottom:16}}>
         <input placeholder="Title" value={title} onChange={e=>setTitle(e.target.value)} />
         <textarea placeholder="Content (markdown ok)" rows={5} value={content} onChange={e=>setContent(e.target.value)}/>
+        <input placeholder="Tags (comma separated)" value={tags} onChange={e=>setTags(e.target.value)} />
         <button onClick={create}>Create Page</button>
       </div>
 
