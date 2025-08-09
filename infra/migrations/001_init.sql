@@ -1,11 +1,5 @@
 create extension if not exists vector;
 
--- Speed up cosine searches on page.embedding
-CREATE INDEX IF NOT EXISTS page_embedding_cos_idx
-ON page
-USING ivfflat (embedding vector_cosine_ops)
-WITH (lists = 100);
-
 -- Cross-page linking
 create table if not exists page_link (
   from_page_id uuid references page(id) on delete cascade,
@@ -31,6 +25,30 @@ CREATE TABLE IF NOT EXISTS ai_answer_cache (
   created_at timestamptz DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS ai_answer_cache_query_idx ON ai_answer_cache USING gin (to_tsvector('english', query));
+
+-- Change page.embedding to 768 dims for Gemini text-embedding-004
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name='page' AND column_name='embedding'
+  ) THEN
+    -- If embedding column exists with a different dim, recreate with 768
+    BEGIN
+      ALTER TABLE page ALTER COLUMN embedding TYPE vector(768);
+    EXCEPTION WHEN others THEN
+      -- Fallback: drop + recreate if type cast not allowed (no data loss path for MVP)
+      ALTER TABLE page DROP COLUMN embedding;
+      ALTER TABLE page ADD COLUMN embedding vector(768);
+    END;
+  ELSE
+    ALTER TABLE page ADD COLUMN embedding vector(768);
+  END IF;
+END $$;
+
+-- Speed up cosine searches
+CREATE INDEX IF NOT EXISTS page_embedding_cos_idx
+ON page USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);
 
 -- Version history for pages
 CREATE TABLE IF NOT EXISTS page_version (
