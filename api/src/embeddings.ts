@@ -1,44 +1,25 @@
 // api/src/embeddings.ts
 import fetch from 'node-fetch';
+import crypto from 'crypto';
 
-// Local embedding (free) using @xenova/transformers
-let localPipeline: any | null = null;
+const DIM = 1536;
 
-async function getLocalPipeline() {
-  if (localPipeline) return localPipeline;
-  const { pipeline } = await import('@xenova/transformers');
-  // feature-extraction pipeline with a MiniLM model; runs on CPU, no internet once cached
-  localPipeline = await pipeline('feature-extraction', 'Xenova/all-MiniLM-L6-v2');
-  return localPipeline;
+function hashToken(token: string): number {
+  const h = crypto.createHash('sha256').update(token).digest();
+  return h.readUInt32LE(0) % DIM;
 }
 
-function meanPool(arr: number[][]): number[] {
-  const rows = arr.length;
-  const cols = arr[0]?.length || 0;
-  const out = new Array(cols).fill(0);
-  for (let i = 0; i < rows; i++) {
-    const row = arr[i];
-    for (let j = 0; j < cols; j++) out[j] += row[j];
-  }
-  for (let j = 0; j < cols; j++) out[j] /= Math.max(1, rows);
-  return out;
-}
-
-function l2norm(v: number[]): number {
-  let s = 0; for (const x of v) s += x * x; return Math.sqrt(s);
-}
-function normalize(v: number[]): number[] {
-  const n = l2norm(v) || 1; return v.map(x => x / n);
-}
-
-// Local, free embedder (preferred)
+// Local, free embedder using hashed bag-of-words
 export async function embedLocal(text: string): Promise<number[] | null> {
   try {
-    const pipe = await getLocalPipeline();
-    // returns [tokens x dim]; we mean-pool
-    const out = await pipe(text, { normalize: false });
-    const pooled = meanPool(out.data as number[][]);
-    const vec = normalize(pooled);
+    const vec = new Array<number>(DIM).fill(0);
+    const tokens = text.toLowerCase().split(/\s+/).filter(Boolean);
+    for (const t of tokens) {
+      const idx = hashToken(t);
+      vec[idx] += 1;
+    }
+    const norm = Math.sqrt(vec.reduce((s, x) => s + x * x, 0)) || 1;
+    for (let i = 0; i < DIM; i++) vec[i] /= norm;
     return vec;
   } catch (e) {
     console.warn('embedLocal failed, will try OpenAI fallback if present:', (e as Error)?.message);
