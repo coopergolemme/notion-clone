@@ -1,12 +1,13 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { api } from '../api'
 import { Network } from 'vis-network'
 import { Group, ActionIcon, Paper, Stack } from '@mantine/core'
-import { IconZoomIn, IconZoomOut, IconArrowsMaximize } from '@tabler/icons-react'
+import { IconZoomIn, IconZoomOut, IconArrowsMaximize, IconPlayerPlay, IconPlayerPause } from '@tabler/icons-react'
 
 export default function Graph() {
   const el = useRef<HTMLDivElement | null>(null)
   const networkRef = useRef<Network | null>(null)
+  const [physics, setPhysics] = useState(true)
 
   useEffect(() => {
     let network: Network | null = null
@@ -39,12 +40,23 @@ export default function Graph() {
     networkRef.current?.fit()
   }
 
+  function togglePhysics() {
+    const n = networkRef.current
+    if (!n) return
+    const next = !physics
+    n.setOptions({ physics: next })
+    setPhysics(next)
+  }
+
   return (
     <Stack>
       <Group gap="xs">
         <ActionIcon variant="light" onClick={() => zoom(1.2)}><IconZoomIn size={16} /></ActionIcon>
         <ActionIcon variant="light" onClick={() => zoom(0.8)}><IconZoomOut size={16} /></ActionIcon>
         <ActionIcon variant="light" onClick={fit}><IconArrowsMaximize size={16} /></ActionIcon>
+        <ActionIcon variant="light" onClick={togglePhysics}>
+          {physics ? <IconPlayerPause size={16} /> : <IconPlayerPlay size={16} />}
+        </ActionIcon>
       </Group>
       <Paper withBorder radius="md" style={{ height: '70vh' }}>
         <div ref={el} style={{ height: '100%' }} />

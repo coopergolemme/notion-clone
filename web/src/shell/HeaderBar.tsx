@@ -1,6 +1,7 @@
 import { Group, ActionIcon, TextInput, Menu } from '@mantine/core'
 import { IconMenu2, IconLayoutSidebarRight, IconSearch, IconPlus, IconGraph, IconHome } from '@tabler/icons-react'
 import { useNavigate } from 'react-router-dom'
+import { spotlight } from '@mantine/spotlight'
 
 export default function HeaderBar({ onToggleNav, onToggleAside }:{ onToggleNav:()=>void; onToggleAside:()=>void }) {
   const nav = useNavigate()
@@ -17,9 +18,8 @@ export default function HeaderBar({ onToggleNav, onToggleAside }:{ onToggleNav:(
         w={480}
         onKeyDown={(e:any) => {
           if (e.key === 'Enter') {
-            const q = e.currentTarget.value
-            // navigate to home with ?q=...
-            nav(`/?q=${encodeURIComponent(q)}`)
+            spotlight.open()
+            spotlight.setQuery(e.currentTarget.value)
           }
         }}
       />

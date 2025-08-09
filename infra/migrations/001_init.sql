@@ -21,3 +21,13 @@ create index if not exists idx_page_link_to   on page_link(to_page_id);
 -- Page format: latex | rich
 ALTER TABLE page
 ADD COLUMN IF NOT EXISTS format text NOT NULL DEFAULT 'rich';
+
+-- Cache synthesized answers/summaries for search queries
+CREATE TABLE IF NOT EXISTS ai_answer_cache (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  query text NOT NULL,
+  answer text NOT NULL,
+  sources jsonb NOT NULL,     -- [{id,title},...]
+  created_at timestamptz DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS ai_answer_cache_query_idx ON ai_answer_cache USING gin (to_tsvector('english', query));
