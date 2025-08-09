@@ -2,6 +2,7 @@ import { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { query } from '../db.js';
 import { embed } from '../embeddings.js';
+import { toPgVector } from '../pgvector.js';
 
 const PageInput = z.object({
   title: z.string().min(1),
@@ -39,8 +40,9 @@ export function registerPageRoutes(app: FastifyInstance) {
     // embed (best-effort)
     try {
       const vec = await embed(`${title}\n\n${content}`);
-      if (vec) {
-        await query('update page set embedding = $1::vector where id=$2', [vec, pageId]);
+      const pgVec = toPgVector(vec);
+      if (pgVec) {
+        await query('update page set embedding = $1::vector where id=$2', [pgVec, pageId]);
       }
     } catch {}
 
@@ -92,7 +94,8 @@ export function registerPageRoutes(app: FastifyInstance) {
     if (title || content) {
       const row = await query<{ title: string, content: string }>('select title, content from page where id=$1', [id]);
       const vec = await embed(`${row.rows[0].title}\n\n${row.rows[0].content}`);
-      if (vec) await query('update page set embedding=$1::vector where id=$2', [vec, id]);
+      const pgVec = toPgVector(vec);
+      if (pgVec) await query('update page set embedding=$1::vector where id=$2', [pgVec, id]);
     }
 
     return { ok: true };

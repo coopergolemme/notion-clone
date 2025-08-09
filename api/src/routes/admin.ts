@@ -1,6 +1,7 @@
 import { FastifyInstance } from "fastify";
 import { query } from "../db.js";
 import { embed } from "../embeddings.js";
+import { toPgVector } from "../pgvector.js";
 
 export function registerAdminRoutes(app: FastifyInstance) {
   app.post("/admin/reembed-all", async () => {
@@ -18,14 +19,14 @@ export function registerAdminRoutes(app: FastifyInstance) {
       );
       console.log("Embedding vector:", vec);
       if (vec) {
-        // Ensure vec is a native array of numbers, not a string
-        const embeddingArray = Array.isArray(vec) ? vec.map(Number) : [];
-        const embeddingString = `[${embeddingArray.join(",")}]`; // Use square brackets
-        await query("update page set embedding=$1::vector where id=$2", [
-          embeddingString,
-          p.id,
-        ]);
-        updated++;
+        const pgVec = toPgVector(vec);
+        if (pgVec) {
+          await query("update page set embedding=$1::vector where id=$2", [
+            pgVec,
+            p.id,
+          ]);
+          updated++;
+        }
       }
     }
     return { updated };
