@@ -7,6 +7,7 @@ import { registerAdminRoutes } from './routes/admin.js';
 import { registerLinkRoutes } from './routes/links.js';
 import { registerExportRoutes } from './routes/export.js';
 import { registerSearchRoutes } from './routes/search.js';
+import { registerHistoryRoutes } from './routes/history.js';
 
 const app = Fastify({ logger: true });
 
@@ -20,6 +21,7 @@ registerAdminRoutes(app);
 registerLinkRoutes(app);
 registerExportRoutes(app);
 registerSearchRoutes(app);
+registerHistoryRoutes(app);
 
 const port = Number(process.env.PORT || 3001);
 app.listen({ port, host: '0.0.0.0' })

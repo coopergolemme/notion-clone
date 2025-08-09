@@ -4,6 +4,7 @@ import { query } from '../db.js';
 import { embed } from '../embeddings.js';
 import { toPgVector } from '../pgvector.js';
 import { extractWikiLinks, normTitle } from '../utils/links.js';
+import { snapshotPageVersion } from '../utils/history.js';
 
 const PageInput = z.object({
   title: z.string().min(1),
@@ -88,6 +89,7 @@ export function registerPageRoutes(app: FastifyInstance) {
     } catch {}
 
     await refreshPageLinks(pageId);
+    await snapshotPageVersion(pageId, (req as any)?.user?.id);
 
     reply.code(201).send({ id: pageId });
   });
@@ -143,6 +145,10 @@ export function registerPageRoutes(app: FastifyInstance) {
     }
 
     await refreshPageLinks(id);
+
+    if (title || content || format || tags) {
+      await snapshotPageVersion(id, (req as any)?.user?.id);
+    }
 
     return { ok: true };
   });

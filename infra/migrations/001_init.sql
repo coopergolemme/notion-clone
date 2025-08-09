@@ -31,3 +31,18 @@ CREATE TABLE IF NOT EXISTS ai_answer_cache (
   created_at timestamptz DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS ai_answer_cache_query_idx ON ai_answer_cache USING gin (to_tsvector('english', query));
+
+-- Version history for pages
+CREATE TABLE IF NOT EXISTS page_version (
+  id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  page_id      uuid NOT NULL REFERENCES page(id) ON DELETE CASCADE,
+  title        text NOT NULL,
+  content      text NOT NULL,
+  format       text NOT NULL DEFAULT 'rich',
+  tags         text[] NOT NULL DEFAULT '{}',
+  created_at   timestamptz NOT NULL DEFAULT now(),
+  created_by   text NULL
+);
+
+-- Helper index for quick lookups
+CREATE INDEX IF NOT EXISTS page_version_page_idx ON page_version(page_id, created_at DESC);

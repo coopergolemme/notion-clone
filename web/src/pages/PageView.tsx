@@ -4,6 +4,7 @@ import { api } from '../api'
 import { Stack, Group, TextInput, SegmentedControl, Menu, Button, TagsInput, Divider, Paper } from '@mantine/core'
 import RichEditor from '../components/RichEditor'
 import LatexEditor from '../components/LatexEditor'
+import HistoryDrawer from '../components/HistoryDrawer'
 
 type Page = { id: string; title: string; content: string; tags: string[]; format?: 'rich'|'latex' }
 
@@ -12,6 +13,7 @@ export default function PageView() {
   const [page, setPage] = useState<Page | null>(null)
   const [format, setFormat] = useState<'rich'|'latex'>('rich')
   const [tags, setTags] = useState<string[]>([])
+  const [historyOpen, setHistoryOpen] = useState(false)
 
   async function load() {
     const { data } = await api.get(`/pages/${id}`)
@@ -56,6 +58,7 @@ export default function PageView() {
             <Menu.Item onClick={exportPdf}>PDF</Menu.Item>
           </Menu.Dropdown>
         </Menu>
+          <Button variant="subtle" onClick={()=>setHistoryOpen(true)}>History</Button>
       </Group>
 
       <Paper withBorder p="md" radius="md" shadow="xs">
@@ -74,6 +77,13 @@ export default function PageView() {
         placeholder="Add tags"
         splitChars={[',', ' ']}
       />
-    </Stack>
+        <HistoryDrawer
+          pageId={id!}
+          opened={historyOpen}
+          onClose={()=>setHistoryOpen(false)}
+          currentTitle={page.title}
+          currentContent={page.content}
+        />
+      </Stack>
   )
 }
