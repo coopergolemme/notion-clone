@@ -11,6 +11,7 @@
     "dev": "concurrently -n API,WEB -c yellow,cyan \"pnpm -C api dev\" \"pnpm -C web dev\""
   },
   "devDependencies": {
+    "@types/diff-match-patch": "^1.0.36",
     "concurrently": "^9.0.0"
   },
   "dependencies": {
