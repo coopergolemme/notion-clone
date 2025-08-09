@@ -27,4 +27,16 @@ export function registerLinkRoutes(app: FastifyInstance) {
     `, [id]);
     return rows;
   });
+
+  // Optional: graph data (nodes + edges)
+  app.get('/graph', async () => {
+    const pages = await query<{ id: string; title: string }>('select id, title from page', []);
+    const links = await query<{ from_page_id: string; to_page_id: string }>(
+      'select from_page_id, to_page_id from page_link', []
+    );
+    return {
+      nodes: pages.rows.map(p => ({ id: p.id, label: p.title })),
+      edges: links.rows.map(e => ({ from: e.from_page_id, to: e.to_page_id })),
+    };
+  });
 }
