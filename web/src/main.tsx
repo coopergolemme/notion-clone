@@ -4,11 +4,13 @@ import { createBrowserRouter, RouterProvider } from 'react-router-dom'
 import App from './App'
 import Home from './pages/Home'
 import PageView from './pages/PageView'
+import Graph from './pages/Graph'
 
 const router = createBrowserRouter([
   { path: '/', element: <App />, children: [
     { index: true, element: <Home/> },
-    { path: 'page/:id', element: <PageView/> }
+    { path: 'page/:id', element: <PageView/> },
+    { path: 'graph', element: <Graph/> }
   ]}
 ])
 
