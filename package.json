@@ -1,0 +1,16 @@
+{
+  "name": "notion-ai-starter",
+  "private": true,
+  "packageManager": "pnpm@9.0.0",
+  "workspaces": [
+    "api",
+    "web",
+    "infra"
+  ],
+  "scripts": {
+    "dev": "concurrently -n API,WEB -c yellow,cyan \"pnpm -C api dev\" \"pnpm -C web dev\""
+  },
+  "devDependencies": {
+    "concurrently": "^9.0.0"
+  }
+}
