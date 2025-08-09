@@ -15,6 +15,9 @@ importers:
         specifier: ^8.2.0
         version: 8.2.0(@mantine/core@8.2.4(@mantine/hooks@8.2.4(react@19.1.1))(react-dom@19.1.1(react@19.1.1))(react@19.1.1))(@mantine/hooks@8.2.4(react@19.1.1))(clsx@2.1.1)(react-dom@19.1.1(react@19.1.1))(react@19.1.1)
     devDependencies:
+      '@types/diff-match-patch':
+        specifier: ^1.0.36
+        version: 1.0.36
       concurrently:
         specifier: ^9.0.0
         version: 9.2.0
@@ -57,6 +60,9 @@ packages:
     resolution: {integrity: sha512-ZXQ0uk6UtJa6Gl+ZWMBh4wC7UqCAoWWvau1TOoe05sBrkyGcXSVrTfoCVzjEQaB/h8VEOUWLGtJokkiMQKcMzA==}
     peerDependencies:
       react: ^18.x || ^19.x
+
+  '@types/diff-match-patch@1.0.36':
+    resolution: {integrity: sha512-xFdR6tkm0MWvBfO8xXCSsinYxHcqkQUlcHeSpMC2ukzOb6lwQAfDmW+Qt0AvlGd8HpsS28qKsB+oPeJn9I39jg==}
 
   ansi-regex@5.0.1:
     resolution: {integrity: sha512-quJQXlTSUGL2LH9SUXo8VwsY4soanhgo6LNSm84E1LBcE8s3O0wpdiRzyR9z/ZZJMlMWv37qOOb9pdJlMUEKFQ==}
@@ -332,6 +338,8 @@ snapshots:
   '@mantine/hooks@8.2.4(react@19.1.1)':
     dependencies:
       react: 19.1.1
+
+  '@types/diff-match-patch@1.0.36': {}
 
   ansi-regex@5.0.1: {}
 

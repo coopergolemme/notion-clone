@@ -49,3 +49,18 @@ END $$;
 -- Speed up cosine searches
 CREATE INDEX IF NOT EXISTS page_embedding_cos_idx
 ON page USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);
+
+-- Version history for pages
+CREATE TABLE IF NOT EXISTS page_version (
+  id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  page_id      uuid NOT NULL REFERENCES page(id) ON DELETE CASCADE,
+  title        text NOT NULL,
+  content      text NOT NULL,
+  format       text NOT NULL DEFAULT 'rich',
+  tags         text[] NOT NULL DEFAULT '{}',
+  created_at   timestamptz NOT NULL DEFAULT now(),
+  created_by   text NULL
+);
+
+-- Helper index for quick lookups
+CREATE INDEX IF NOT EXISTS page_version_page_idx ON page_version(page_id, created_at DESC);

@@ -11,6 +11,9 @@ importers:
       '@fastify/cors':
         specifier: ^8.5.0
         version: 8.5.0
+      '@google/generative-ai':
+        specifier: ^0.17.0
+        version: 0.17.2
       dotenv:
         specifier: ^16.4.5
         version: 16.6.1
@@ -223,6 +226,10 @@ packages:
 
   '@fastify/merge-json-schemas@0.1.1':
     resolution: {integrity: sha512-fERDVz7topgNjtXsJTTW1JKLy0rhuLRcquYqNR9rF7OcVpCa2OVW49ZPDIhaRRCaUuvVxI+N416xUoF76HNSXA==}
+
+  '@google/generative-ai@0.17.2':
+    resolution: {integrity: sha512-TRKwCCqFe8JawNpvwk5FNcE9CQGUUjROiUxpH+uUR46sjLkgsR2v4+clu2axxnzEd9rnMpUNAJriUXeEu0zFBw==}
+    engines: {node: '>=18.0.0'}
 
   '@puppeteer/browsers@2.6.1':
     resolution: {integrity: sha512-aBSREisdsGH890S2rQqK82qmQYU3uFpSH8wcZWHgHzl3LfzsxAKbLNiAG9mO8v1Y0UICBeClICxPJvyr0rcuxg==}
@@ -1018,6 +1025,8 @@ snapshots:
   '@fastify/merge-json-schemas@0.1.1':
     dependencies:
       fast-deep-equal: 3.1.3
+
+  '@google/generative-ai@0.17.2': {}
 
   '@puppeteer/browsers@2.6.1':
     dependencies:
