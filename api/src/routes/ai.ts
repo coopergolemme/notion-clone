@@ -1,6 +1,10 @@
 import { FastifyInstance } from 'fastify';
 import { query } from '../db.js';
 import { embed } from '../embeddings.js';
+import { pipeline } from '@xenova/transformers';
+
+// Load summarization model once at startup
+const summarizer = await pipeline('summarization', 'facebook/bart-large-cnn');
 
 export function registerAIRoutes(app: FastifyInstance) {
   app.post('/ai/related', async (req, reply) => {
@@ -34,5 +38,24 @@ export function registerAIRoutes(app: FastifyInstance) {
       limit 10
     `, [vec]);
     return rows.rows;
+  });
+
+  app.post('/ai/summarize', async (req, reply) => {
+    const { pageId } = (req.body as any) ?? {};
+    if (!pageId) return reply.code(400).send({ error: 'pageId required' });
+
+    const { rows } = await query<{ content: string }>('select content from page where id=$1', [pageId]);
+    const content = rows[0]?.content;
+    if (!content) return reply.code(404).send({ error: 'not found' });
+
+    try {
+      const result = await summarizer(content, { min_length: 30, max_length: 120 });
+      const summary = Array.isArray(result) ? result[0].summary_text : (result as any).summary_text;
+      await query('update page set summary=$1 where id=$2', [summary, pageId]);
+      return { summary };
+    } catch (e) {
+      req.log.error(e);
+      return reply.code(500).send({ error: 'summarization failed' });
+    }
   });
 }

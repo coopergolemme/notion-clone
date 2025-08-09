@@ -63,7 +63,7 @@ export function registerPageRoutes(app: FastifyInstance) {
 
   app.get('/pages/:id', async (req, reply) => {
     const { id } = req.params as { id: string };
-    const page = await query('select id, title, content, created_at, updated_at from page where id=$1', [id]);
+    const page = await query('select id, title, content, summary, created_at, updated_at from page where id=$1', [id]);
     if (!page.rows.length) return reply.code(404).send({ error: 'not found' });
     const tags = await query('select t.name from tag t join page_tag pt on pt.tag_id=t.id where pt.page_id=$1', [id]);
     return { ...page.rows[0], tags: tags.rows.map(r => r.name) };
