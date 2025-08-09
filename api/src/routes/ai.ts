@@ -1,10 +1,34 @@
 import { FastifyInstance } from 'fastify';
+import fetch from 'node-fetch';
 import { query } from '../db.js';
 import { embed } from '../embeddings.js';
-import { pipeline } from '@xenova/transformers';
 
-// Load summarization model once at startup
-const summarizer = await pipeline('summarization', 'facebook/bart-large-cnn');
+// Use OpenAI for summarization; the client is initialized once.
+async function summarize(text: string): Promise<string> {
+  const key = process.env.OPENAI_API_KEY;
+  if (!key) throw new Error('missing api key');
+  const resp = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${key}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      model: 'gpt-3.5-turbo',
+      messages: [
+        {
+          role: 'system',
+          content: 'Summarize the user-provided content into 3-4 sentences.'
+        },
+        { role: 'user', content: text }
+      ]
+    })
+  });
+  const data: any = await resp.json();
+  const summary = data?.choices?.[0]?.message?.content?.trim();
+  if (!summary) throw new Error('no summary returned');
+  return summary;
+}
 
 export function registerAIRoutes(app: FastifyInstance) {
   app.post('/ai/related', async (req, reply) => {
@@ -49,8 +73,7 @@ export function registerAIRoutes(app: FastifyInstance) {
     if (!content) return reply.code(404).send({ error: 'not found' });
 
     try {
-      const result = await summarizer(content, { min_length: 30, max_length: 120 });
-      const summary = Array.isArray(result) ? result[0].summary_text : (result as any).summary_text;
+      const summary = await summarize(content);
       await query('update page set summary=$1 where id=$2', [summary, pageId]);
       return { summary };
     } catch (e) {
