@@ -8,7 +8,8 @@ import { extractWikiLinks, normTitle } from '../utils/links.js';
 const PageInput = z.object({
   title: z.string().min(1),
   content: z.string().min(1),
-  tags: z.array(z.string()).optional()
+  tags: z.array(z.string()).optional(),
+  format: z.enum(['latex', 'rich']).optional()
 });
 
 async function refreshPageLinks(pageId: string) {
@@ -51,7 +52,7 @@ async function refreshPageLinks(pageId: string) {
 export function registerPageRoutes(app: FastifyInstance) {
   app.post('/pages', async (req, reply) => {
     const body = PageInput.parse(req.body);
-    const { title, content, tags = [] } = body;
+    const { title, content, tags = [], format } = body;
 
     // upsert tags
     const tagIds: number[] = [];
@@ -65,8 +66,10 @@ export function registerPageRoutes(app: FastifyInstance) {
 
     // insert page
     const { rows: pRows } = await query<{ id: string }>(
-      'insert into page(title, content) values($1, $2) returning id',
-      [title, content]
+      format
+        ? 'insert into page(title, content, format) values($1, $2, $3) returning id'
+        : 'insert into page(title, content) values($1, $2) returning id',
+      format ? [title, content, format] : [title, content]
     );
     const pageId = pRows[0].id;
 
@@ -105,7 +108,7 @@ export function registerPageRoutes(app: FastifyInstance) {
 
   app.get('/pages/:id', async (req, reply) => {
     const { id } = req.params as { id: string };
-    const page = await query('select id, title, content, created_at, updated_at from page where id=$1', [id]);
+    const page = await query('select id, title, content, format, created_at, updated_at from page where id=$1', [id]);
     if (!page.rows.length) return reply.code(404).send({ error: 'not found' });
     const tags = await query('select t.name from tag t join page_tag pt on pt.tag_id=t.id where pt.page_id=$1', [id]);
     return { ...page.rows[0], tags: tags.rows.map(r => r.name) };
@@ -114,10 +117,11 @@ export function registerPageRoutes(app: FastifyInstance) {
   app.put('/pages/:id', async (req, reply) => {
     const { id } = req.params as { id: string };
     const body = PageInput.partial().parse(req.body);
-    let { title, content, tags } = body;
+    let { title, content, tags, format } = body;
 
     if (title) await query('update page set title=$1, updated_at=now() where id=$2', [title, id]);
     if (content) await query('update page set content=$1, updated_at=now() where id=$2', [content, id]);
+    if (format) await query('update page set format=$1, updated_at=now() where id=$2', [format, id]);
 
     if (tags) {
       await query('delete from page_tag where page_id=$1', [id]);

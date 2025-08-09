@@ -2,8 +2,10 @@ import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { api } from '../api'
 import AIPanel from '../components/AIPanel'
+import RichEditor from '../components/RichEditor'
+import LatexEditor from '../components/LatexEditor'
 
-type Page = { id: string; title: string; content: string; tags: string[] }
+type Page = { id: string; title: string; content: string; tags: string[]; format: 'rich'|'latex' }
 
 function renderWikiLinks(text: string, resolver: (title: string) => string | undefined) {
   const re = /\[\[([^\]]+)\]\]/g;
@@ -29,6 +31,7 @@ export default function PageView() {
   const [page, setPage] = useState<Page | null>(null)
   const [tagsText, setTagsText] = useState('')
   const [links, setLinks] = useState<{id:string; title:string}[]>([])
+  const [format, setFormat] = useState<'rich'|'latex'>('rich')
 
   async function load() {
     const { data } = await api.get(`/pages/${id}`)
@@ -50,11 +53,26 @@ export default function PageView() {
 
   useEffect(() => {
     if (page?.tags) setTagsText(page.tags.join(', '))
+    if (page?.format && (page.format === 'rich' || page.format === 'latex')) {
+      setFormat(page.format)
+    }
   }, [page])
 
   async function save(updates: Partial<Page>) {
     await api.put(`/pages/${id}`, updates)
     await load()
+  }
+
+  async function changeFormat(next: 'rich'|'latex') {
+    setFormat(next)
+    await save({ format: next })
+  }
+
+  async function exportPdf() {
+    const a = document.createElement('a')
+    a.href = `/export/pdf/${id}`
+    a.target = '_blank'
+    a.click()
   }
 
   function parseTags(input: string): string[] {
@@ -78,15 +96,35 @@ export default function PageView() {
     <div style={{display:'grid', gridTemplateColumns:'1fr 320px', gap:16}}>
       <div>
         <input value={page.title} onChange={e=>save({ title: e.target.value })} style={{fontSize:18, width:'100%'}}/>
-        <textarea
-          value={page.content}
-          onChange={e=>save({ content: e.target.value })}
-          rows={20}
-          style={{width:'100%', marginTop:8}}
-        />
+        <div style={{display:'flex', gap:8, alignItems:'center', marginBottom:8}}>
+          <label style={{fontWeight:600}}>Mode:</label>
+          <button
+            onClick={() => changeFormat('rich')}
+            disabled={format==='rich'}
+          >Rich</button>
+          <button
+            onClick={() => changeFormat('latex')}
+            disabled={format==='latex'}
+          >LaTeX</button>
+
+          <div style={{flex:1}} />
+          <button onClick={exportPdf}>Export PDF</button>
+        </div>
+
+        {format === 'rich' ? (
+          <RichEditor
+            value={page.content}
+            onChange={(html) => save({ content: html })}
+          />
+        ) : (
+          <LatexEditor
+            value={page.content}
+            onChange={(src) => save({ content: src })}
+          />
+        )}
         <div style={{marginTop:8, padding:8, background:'#fafafa', border:'1px solid #eee'}}>
           <div style={{fontWeight:600, marginBottom:4}}>Preview with links</div>
-          <div>{renderWikiLinks(page.content, resolveHref)}</div>
+          <div>{renderWikiLinks(page.content.replace(/<[^>]+>/g, ''), resolveHref)}</div>
         </div>
         <div style={{marginTop:8}}>
           <label style={{display:'block', fontWeight:600, marginBottom:4}}>Tags (comma-separated)</label>
