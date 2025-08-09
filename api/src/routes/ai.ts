@@ -1,6 +1,15 @@
+import keywordExtractor from 'keyword-extractor';
 import { FastifyInstance } from 'fastify';
 import { query } from '../db.js';
 import { embed } from '../embeddings.js';
+
+function toKebab(s: string) {
+  return s
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
 
 export function registerAIRoutes(app: FastifyInstance) {
   app.post('/ai/related', async (req, reply) => {
@@ -34,5 +43,65 @@ export function registerAIRoutes(app: FastifyInstance) {
       limit 10
     `, [vec]);
     return rows.rows;
+  });
+
+  app.post('/ai/suggest-tags', async (req, reply) => {
+    const { pageId } = (req.body as any) ?? {};
+    if (!pageId) return reply.code(400).send({ error: 'pageId required' });
+
+    // fetch page content
+    const res = await query<{ title: string; content: string }>(
+      'select title, content from page where id=$1',
+      [pageId]
+    );
+    if (!res.rows.length) return reply.code(404).send({ error: 'page not found' });
+
+    const { title, content } = res.rows[0];
+    const text = `${title}\n\n${content}`;
+
+    // extract keywords using keyword-extractor
+    const keywords = keywordExtractor.extract(text, {
+      language: 'english',
+      remove_digits: true,
+      return_changed_case: true,
+      remove_duplicates: false
+    });
+
+    // rank by frequency, filter out very short ones
+    const counts = new Map<string, number>();
+    for (const k of keywords) {
+      if (k.length < 3) continue;
+      counts.set(k, (counts.get(k) || 0) + 1);
+    }
+    // sort by count desc, then length asc (shorter tags nicer)
+    const ranked = [...counts.entries()]
+      .sort((a, b) => b[1] - a[1] || a[0].length - b[0].length)
+      .map(([k]) => k);
+
+    // normalize to nice tag slugs/labels, dedupe, pick top 3–5
+    const seen = new Set<string>();
+    const suggestions: string[] = [];
+    for (const raw of ranked) {
+      const clean = toKebab(raw).replace(/^-+|-+$/g, '');
+      if (!clean || clean.length < 3) continue;
+      if (seen.has(clean)) continue;
+      seen.add(clean);
+      suggestions.push(clean);
+      if (suggestions.length >= 5) break;
+    }
+
+    // if we didn’t find enough, fall back to title tokens
+    if (suggestions.length < 3) {
+      const extra = title.split(/\W+/).map(toKebab).filter(Boolean);
+      for (const e of extra) {
+        if (!seen.has(e)) {
+          seen.add(e);
+          suggestions.push(e);
+          if (suggestions.length >= 5) break;
+        }
+      }
+    }
+
+    return { tags: suggestions };
   });
 }
