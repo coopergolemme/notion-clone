@@ -2,6 +2,7 @@ import keywordExtractor from 'keyword-extractor';
 import { FastifyInstance } from 'fastify';
 import { query } from '../db.js';
 import { embed } from '../embeddings.js';
+import { toPgVector } from '../pgvector.js';
 
 function toKebab(s: string) {
   return s
@@ -17,18 +18,19 @@ export function registerAIRoutes(app: FastifyInstance) {
     const { pageId, k } = (req.body as any) ?? {};
     const limit = Math.min(Number(k || 5), 20);
 
-    const base = await query<{ title: string; content: string; embedding: number[] }>(
+    const base = await query<{ title: string; content: string; embedding: any }>(
       'select title, content, embedding from page where id=$1', [pageId]
     );
     if (!base.rows.length) return [];
 
     // If no stored embedding yet, compute on the fly (and persist)
-    let vec = base.rows[0].embedding as unknown as number[] | null;
-    if (!vec || !Array.isArray(vec) || vec.length === 0) {
+    let vec = toPgVector(base.rows[0].embedding);
+    if (!vec) {
       const e = await embed(`${base.rows[0].title}\n\n${base.rows[0].content}`);
       if (e && e.length) {
-        vec = e;
-        await query('update page set embedding = $1::vector where id = $2', [vec, pageId]);
+        vec = toPgVector(e);
+        if (vec)
+          await query('update page set embedding = $1::vector where id = $2', [vec, pageId]);
       } else {
         return []; // cannot compute related without an embedding
       }
@@ -38,7 +40,7 @@ export function registerAIRoutes(app: FastifyInstance) {
       select id, title
       from page
       where id <> $1
-      order by embedding <=> $2
+      order by embedding <=> $2::vector
       limit $3
     `, [pageId, vec, limit]);
 
@@ -54,12 +56,13 @@ export function registerAIRoutes(app: FastifyInstance) {
       const rows = await query('select id, title from page where title ilike $1 or content ilike $1 limit 10', [`%${q}%`]);
       return rows.rows;
     }
+    const pgVec = toPgVector(vec);
     const rows = await query<{ id: string; title: string }>(`
       select id, title
       from page
-      order by embedding <=> $1
+      order by embedding <=> $1::vector
       limit 10
-    `, [vec]);
+    `, [pgVec]);
     return rows.rows;
   });
 
