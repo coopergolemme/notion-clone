@@ -17,3 +17,7 @@ create table if not exists page_link (
 -- Speed up lookups
 create index if not exists idx_page_link_from on page_link(from_page_id);
 create index if not exists idx_page_link_to   on page_link(to_page_id);
+
+-- Page format: latex | rich
+ALTER TABLE page
+ADD COLUMN IF NOT EXISTS format text NOT NULL DEFAULT 'rich';
