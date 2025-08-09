@@ -12,7 +12,8 @@
     "fastify": "^4.28.1",
     "node-fetch": "^3.3.2",
     "pg": "^8.11.5",
-    "zod": "^3.23.8"
+    "zod": "^3.23.8",
+    "keyword-extractor": "^0.0.28"
   },
   "devDependencies": {
     "tsx": "^4.15.7",
