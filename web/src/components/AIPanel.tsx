@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { api } from '../api'
 
 export default function AIPanel({ pageId }: { pageId: string }) {
@@ -7,6 +7,7 @@ export default function AIPanel({ pageId }: { pageId: string }) {
   const [results, setResults] = useState<{id:string; title:string}[]>([])
   const [suggested, setSuggested] = useState<string[]>([])
   const [applying, setApplying] = useState(false)
+  const [backlinks, setBacklinks] = useState<{id:string; title:string}[]>([])
 
   async function loadRelated() {
     const { data } = await api.post('/ai/related', { pageId, k:5 })
@@ -36,6 +37,12 @@ export default function AIPanel({ pageId }: { pageId: string }) {
     }
   }
 
+  async function loadBacklinks() {
+    const { data } = await api.get(`/pages/${pageId}/backlinks`)
+    setBacklinks(data)
+  }
+  useEffect(() => { loadBacklinks() }, [pageId])
+
   return (
     <aside style={{borderLeft:'1px solid #eee', paddingLeft:12}}>
       <h3>AI</h3>
@@ -64,6 +71,14 @@ export default function AIPanel({ pageId }: { pageId: string }) {
             </button>
           </>
         )}
+      </div>
+
+      <div style={{marginTop:16}}>
+        <h4>Backlinks</h4>
+        {!backlinks.length && <div style={{opacity:0.7}}>No backlinks yet</div>}
+        <ul>
+          {backlinks.map(b => <li key={b.id}><a href={`/page/${b.id}`}>{b.title}</a></li>)}
+        </ul>
       </div>
     </aside>
   )

@@ -3,12 +3,50 @@ import { z } from 'zod';
 import { query } from '../db.js';
 import { embed } from '../embeddings.js';
 import { toPgVector } from '../pgvector.js';
+import { extractWikiLinks, normTitle } from '../utils/links.js';
 
 const PageInput = z.object({
   title: z.string().min(1),
   content: z.string().min(1),
   tags: z.array(z.string()).optional()
 });
+
+async function refreshPageLinks(pageId: string) {
+  // 1) get this page's title & content
+  const { rows: pRows } = await query<{ title: string; content: string }>(
+    'select title, content from page where id=$1', [pageId]
+  );
+  if (!pRows.length) return;
+
+  const titles = extractWikiLinks(pRows[0].content).map(normTitle);
+  // short-circuit: clear links if none
+  await query('delete from page_link where from_page_id=$1', [pageId]);
+  if (titles.length === 0) return;
+
+  // 2) resolve titles -> page ids (exact case-insensitive title match)
+  // Avoid self-links
+  const { rows: allTargets } = await query<{ id: string; title: string }>(
+    `select id, title from page where id <> $1`,
+    [pageId]
+  );
+  const byKey = new Map<string, string>(); // normTitle => id
+  for (const r of allTargets) byKey.set(normTitle(r.title), r.id);
+
+  const resolved: string[] = [];
+  for (const t of titles) {
+    const toId = byKey.get(t);
+    if (toId) resolved.push(toId);
+  }
+  if (resolved.length === 0) return;
+
+  // 3) insert links
+  const values = resolved.map((toId, i) => `($1, $${i+2})`).join(',');
+  await query(
+    `insert into page_link(from_page_id, to_page_id) values ${values}
+     on conflict do nothing`,
+    [pageId, ...resolved]
+  );
+}
 
 export function registerPageRoutes(app: FastifyInstance) {
   app.post('/pages', async (req, reply) => {
@@ -45,6 +83,8 @@ export function registerPageRoutes(app: FastifyInstance) {
         await query('update page set embedding = $1::vector where id=$2', [pgVec, pageId]);
       }
     } catch {}
+
+    await refreshPageLinks(pageId);
 
     reply.code(201).send({ id: pageId });
   });
@@ -97,6 +137,8 @@ export function registerPageRoutes(app: FastifyInstance) {
       const pgVec = toPgVector(vec);
       if (pgVec) await query('update page set embedding=$1::vector where id=$2', [pgVec, id]);
     }
+
+    await refreshPageLinks(id);
 
     return { ok: true };
   });

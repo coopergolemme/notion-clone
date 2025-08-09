@@ -4,6 +4,7 @@ import cors from '@fastify/cors';
 import { registerPageRoutes } from './routes/pages.js';
 import { registerAIRoutes } from './routes/ai.js';
 import { registerAdminRoutes } from './routes/admin.js';
+import { registerLinkRoutes } from './routes/links.js';
 
 const app = Fastify({ logger: true });
 
@@ -14,6 +15,7 @@ app.get('/health', async () => ({ ok: true }));
 registerPageRoutes(app);
 registerAIRoutes(app);
 registerAdminRoutes(app);
+registerLinkRoutes(app);
 
 const port = Number(process.env.PORT || 3001);
 app.listen({ port, host: '0.0.0.0' })
