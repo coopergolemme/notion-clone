@@ -47,22 +47,40 @@ function toKebab(s: string) {
 }
 
 export function registerAIRoutes(app: FastifyInstance) {
+  // RELATED by cosine distance
   app.post('/ai/related', async (req, reply) => {
     const { pageId, k } = (req.body as any) ?? {};
     const limit = Math.min(Number(k || 5), 20);
-    const page = await query<{ embedding: number[] }>('select embedding from page where id=$1', [pageId]);
-    const vec = page.rows[0]?.embedding;
-    if (!vec) return [];
-    const rows = await query(`
-      select id, title 
-      from page 
-      where id <> $1 
-      order by embedding <#> $2 
+
+    const base = await query<{ title: string; content: string; embedding: number[] }>(
+      'select title, content, embedding from page where id=$1', [pageId]
+    );
+    if (!base.rows.length) return [];
+
+    // If no stored embedding yet, compute on the fly (and persist)
+    let vec = base.rows[0].embedding as unknown as number[] | null;
+    if (!vec || !Array.isArray(vec) || vec.length === 0) {
+      const e = await embed(`${base.rows[0].title}\n\n${base.rows[0].content}`);
+      if (e && e.length) {
+        vec = e;
+        await query('update page set embedding = $1::vector where id = $2', [vec, pageId]);
+      } else {
+        return []; // cannot compute related without an embedding
+      }
+    }
+
+    const rows = await query<{ id: string; title: string }>(`
+      select id, title
+      from page
+      where id <> $1
+      order by embedding <=> $2
       limit $3
     `, [pageId, vec, limit]);
+
     return rows.rows;
   });
 
+  // Semantic search by query text (cosine), keyword fallback if embedding fails
   app.post('/ai/search', async (req, reply) => {
     const SearchInput = z.object({
       query: z.string().min(1),
@@ -74,71 +92,17 @@ export function registerAIRoutes(app: FastifyInstance) {
     const { query: q, tags, dateFrom, dateTo, authorId } = SearchInput.parse(req.body ?? {});
 
     const vec = await embed(q);
-
-    let rows;
-    if (vec) {
-      const sql = `
-        with search as (
-          select p.id, p.title, p.content, p.created_at,
-                 coalesce(array_agg(distinct t.name) filter (where t.name is not null), '{}') as tags,
-                 1 - (p.embedding <=> $1) as vector_score,
-                 ts_rank_cd(to_tsvector('english', coalesce(p.title,'') || ' ' || coalesce(p.content,'')), plainto_tsquery('english', $2)) as text_score
-          from page p
-          left join page_tag pt on pt.page_id = p.id
-          left join tag t on t.id = pt.tag_id
-          where ($3::text[] is null or exists (
-                   select 1 from page_tag pt2
-                   join tag t2 on t2.id = pt2.tag_id
-                   where pt2.page_id = p.id and t2.name = any($3)
-                 ))
-            and ($4::timestamptz is null or p.created_at >= $4)
-            and ($5::timestamptz is null or p.created_at <= $5)
-            and ($6::text is null or p.author_id = $6)
-          group by p.id
-        )
-        select id, title, content, created_at, tags,
-               (0.6 * vector_score + 0.4 * text_score) as score
-        from search
-        order by score desc
-        limit 20
-      `;
-      rows = await query(sql, [vec, q, tags && tags.length ? tags : null, dateFrom || null, dateTo || null, authorId || null]);
-    } else {
-      const sql = `
-        with search as (
-          select p.id, p.title, p.content, p.created_at,
-                 coalesce(array_agg(distinct t.name) filter (where t.name is not null), '{}') as tags,
-                 ts_rank_cd(to_tsvector('english', coalesce(p.title,'') || ' ' || coalesce(p.content,'')), plainto_tsquery('english', $1)) as text_score
-          from page p
-          left join page_tag pt on pt.page_id = p.id
-          left join tag t on t.id = pt.tag_id
-          where ($2::text[] is null or exists (
-                   select 1 from page_tag pt2
-                   join tag t2 on t2.id = pt2.tag_id
-                   where pt2.page_id = p.id and t2.name = any($2)
-                 ))
-            and ($3::timestamptz is null or p.created_at >= $3)
-            and ($4::timestamptz is null or p.created_at <= $4)
-            and ($5::text is null or p.author_id = $5)
-          group by p.id
-        )
-        select id, title, content, created_at, tags,
-               text_score as score
-        from search
-        order by score desc
-        limit 20
-      `;
-      rows = await query(sql, [q, tags && tags.length ? tags : null, dateFrom || null, dateTo || null, authorId || null]);
+    if (!vec) {
+      const rows = await query('select id, title from page where title ilike $1 or content ilike $1 limit 10', [`%${q}%`]);
+      return rows.rows;
     }
-
-    return rows.rows.map((r: any) => ({
-      id: r.id,
-      title: r.title,
-      snippet: makeSnippet(r.content, q),
-      tags: r.tags || [],
-      createdAt: r.created_at,
-      score: r.score,
-    }));
+    const rows = await query<{ id: string; title: string }>(`
+      select id, title
+      from page
+      order by embedding <=> $1
+      limit 10
+    `, [vec]);
+    return rows.rows;
   });
 
   app.post('/ai/suggest-tags', async (req, reply) => {
