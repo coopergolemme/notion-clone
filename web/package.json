@@ -26,7 +26,8 @@
     "@tabler/icons-react": "^2.47.0",
     "dayjs": "^1.11.12",
     "@tanstack/react-query": "^5.51.23",
-    "mantine-datatable": "^7.11.3"
+    "mantine-datatable": "^7.11.3",
+    "@mantine/spotlight": "^7.12.1"
   },
   "devDependencies": {
     "@types/node": "^20.12.7",

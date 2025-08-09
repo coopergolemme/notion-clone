@@ -1,4 +1,4 @@
-import { Tabs, ScrollArea, Stack, Button, List, Text, Group, Badge } from '@mantine/core'
+import { Tabs, ScrollArea, Stack, Button, List, Text, Group, Badge, Textarea } from '@mantine/core'
 import { useEffect, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 import { api } from '../api'
@@ -10,8 +10,9 @@ export default function RightAside() {
 
   const [backlinks, setBacklinks] = useState<any[]>([])
   const [related, setRelated] = useState<any[]>([])
-  const [loadingAI, setLoadingAI] = useState(false)
-  const [summary, setSummary] = useState('')
+  const [ask, setAsk] = useState('')
+  const [answer, setAnswer] = useState('')
+  const [answering, setAnswering] = useState(false)
 
   useEffect(() => {
     if (!pageId) return
@@ -19,13 +20,12 @@ export default function RightAside() {
     api.post('/ai/related', { pageId, k: 5 }).then(({data})=>setRelated(data))
   }, [pageId])
 
-  async function summarize() {
-    if (!pageId) return
-    setLoadingAI(true)
+  async function askAI() {
+    setAnswering(true)
     try {
-      const { data } = await api.post('/ai/summarize', { pageId })
-      setSummary(data?.summary || '')
-    } finally { setLoadingAI(false) }
+      const { data } = await api.post('/ai/answer', { query: ask, k: 5 })
+      setAnswer(data?.answer || '')
+    } finally { setAnswering(false) }
   }
 
   return (
@@ -38,8 +38,9 @@ export default function RightAside() {
 
       <Tabs.Panel value="ai" p="md">
         <Stack gap="sm">
-          <Button loading={loadingAI} onClick={summarize}>Summarize</Button>
-          {summary && <Text size="sm">{summary}</Text>}
+          <Textarea value={ask} onChange={(e)=>setAsk(e.currentTarget.value)} placeholder="Ask across your pages…" autosize minRows={2}/>
+          <Button loading={answering} onClick={askAI}>Ask</Button>
+          {answer && <Text size="sm">{answer}</Text>}
         </Stack>
       </Tabs.Panel>
 
