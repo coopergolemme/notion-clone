@@ -3,6 +3,7 @@ import { FastifyInstance } from "fastify";
 import { query } from "../db.js";
 import { embed } from "../embeddings.js";
 import { toPgVector } from "../pgvector.js";
+import { z } from "zod";
 
 function toKebab(s: string) {
   return s
