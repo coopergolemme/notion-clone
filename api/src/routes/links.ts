@@ -30,12 +30,33 @@ export function registerLinkRoutes(app: FastifyInstance) {
 
   // Optional: graph data (nodes + edges)
   app.get('/graph', async () => {
-    const pages = await query<{ id: string; title: string }>('select id, title from page', []);
+    const pages = await query<{
+      id: string;
+      title: string;
+      content: string;
+      created_at: Date;
+      updated_at: Date;
+    }>('select id, title, content, created_at, updated_at from page', []);
+
     const links = await query<{ from_page_id: string; to_page_id: string }>(
       'select from_page_id, to_page_id from page_link', []
     );
+
+    function getSnippet(text: string) {
+      const sentences = text.match(/[^.!?]+[.!?]/g) || [];
+      return sentences.slice(0, 2).join(' ').trim();
+    }
+
+    function formatDate(d: Date) {
+      return d.toISOString().split('T')[0];
+    }
+
     return {
-      nodes: pages.rows.map(p => ({ id: p.id, label: p.title })),
+      nodes: pages.rows.map(p => ({
+        id: p.id,
+        label: p.title,
+        title: `${getSnippet(p.content)}<br/><br/>Created: ${formatDate(p.created_at)}<br/>Updated: ${formatDate(p.updated_at)}`,
+      })),
       edges: links.rows.map(e => ({ from: e.from_page_id, to: e.to_page_id })),
     };
   });
