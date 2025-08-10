@@ -1,7 +1,8 @@
 import { ActionIcon, Group, Tooltip, SegmentedControl } from '@mantine/core'
-import { IconBold, IconItalic, IconUnderline, IconH1, IconH2, IconH3, IconList, IconListNumbers, IconCode, IconCodeCircle2, IconChecklist, IconLink, IconTable } from '@tabler/icons-react'
+import { IconBold, IconItalic, IconUnderline, IconH1, IconH2, IconH3, IconList, IconListNumbers, IconCode, IconCodeCircle2, IconChecklist, IconLink, IconTable, IconMathFunction, IconSquareFunction } from '@tabler/icons-react'
 import { Editor } from '@tiptap/react'
 import { toggleHeading, insertCodeBlock, insertTable, insertTodo } from './commands'
+import { insertInlineMath, insertBlockMath } from './MathExtensions'
 
 export default function Toolbar({ editor, onFullscreen, fullscreen }:{
   editor: Editor, onFullscreen: ()=>void, fullscreen: boolean
@@ -28,6 +29,8 @@ export default function Toolbar({ editor, onFullscreen, fullscreen }:{
       <Tooltip label="Task list"><ActionIcon onClick={()=>insertTodo(editor)} variant={editor.isActive('taskList')?'filled':'subtle'}><IconChecklist size={16}/></ActionIcon></Tooltip>
       <Tooltip label="Inline code"><ActionIcon onClick={()=>editor.chain().focus().toggleCode().run()} variant={editor.isActive('code')?'filled':'subtle'}><IconCode size={16}/></ActionIcon></Tooltip>
       <Tooltip label="Code block"><ActionIcon onClick={()=>insertCodeBlock(editor)} variant={editor.isActive('codeBlock')?'filled':'subtle'}><IconCodeCircle2 size={16}/></ActionIcon></Tooltip>
+      <Tooltip label="Inline math ($…$)"><ActionIcon onClick={()=>insertInlineMath(editor)}><IconMathFunction size={16}/></ActionIcon></Tooltip>
+      <Tooltip label="Block math ($$…$$)"><ActionIcon onClick={()=>insertBlockMath(editor)}><IconSquareFunction size={16}/></ActionIcon></Tooltip>
       <Tooltip label="Table"><ActionIcon onClick={()=>insertTable(editor)} variant={editor.isActive('table')?'filled':'subtle'}><IconTable size={16}/></ActionIcon></Tooltip>
       <Tooltip label="Link (⌘/Ctrl+K)"><ActionIcon onClick={()=>{
         const url = prompt('Enter URL'); if (!url) return

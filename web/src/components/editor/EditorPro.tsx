@@ -17,6 +17,7 @@ import Toolbar from "./Toolbar";
 import Bubble from "./Bubble";
 import SlashMenu from "./SlashMenu";
 import Outline from "./Outline";
+import { MathInline, MathBlock, mathPMPlugin } from "./MathExtensions";
 import "./styles.css";
 
 const lowlight = createLowlight(common);
@@ -34,6 +35,8 @@ export default function EditorPro({ value, onChange }: Props) {
     extensions: [
       StarterKit.configure({ codeBlock: false }),
       CodeBlockLowlight.configure({ lowlight }),
+      MathInline,
+      MathBlock,
       Underline,
       Link.configure({
         protocols: ["http", "https", "mailto"],
@@ -67,6 +70,9 @@ export default function EditorPro({ value, onChange }: Props) {
         }
         return false;
       },
+    },
+    onCreate({ editor }) {
+      editor.registerPlugin(mathPMPlugin())
     },
     onUpdate: ({ editor }) => {
       onChange(editor.getHTML());
