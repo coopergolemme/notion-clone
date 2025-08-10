@@ -17,12 +17,12 @@ import Toolbar from "./Toolbar";
 import Bubble from "./Bubble";
 import SlashMenu from "./SlashMenu";
 import Outline from "./Outline";
-import { MathInline, MathBlock, mathPMPlugin } from "./MathExtensions";
+import { MathInline, MathBlock } from "./MathExtensions";
 import "./styles.css";
 
 const lowlight = createLowlight(common);
 
-type Props = {  
+type Props = {
   value: string;
   onChange: (html: string) => void;
 };
@@ -70,9 +70,6 @@ export default function EditorPro({ value, onChange }: Props) {
         }
         return false;
       },
-    },
-    onCreate({ editor }) {
-      editor.registerPlugin(mathPMPlugin())
     },
     onUpdate: ({ editor }) => {
       onChange(editor.getHTML());

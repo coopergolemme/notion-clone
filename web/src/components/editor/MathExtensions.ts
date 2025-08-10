@@ -1,116 +1,191 @@
-import { Node, mergeAttributes } from '@tiptap/core'
-import { mathPlugin, mathInline, mathDisplay, REGEX_INLINE, REGEX_BLOCK } from 'prosemirror-math'
-import katex from 'katex'
+import { Node, mergeAttributes } from "@tiptap/core";
+import Mathematics from "@tiptap/extension-mathematics";
+import katex from "katex";
 
-// Inline math: $ ... $
+// Use the official TipTap math extension
+export const MathExtension = Mathematics.configure({
+  HTMLAttributes: {
+    class: "math-node",
+  },
+  katexOptions: {
+    throwOnError: false,
+    displayMode: false,
+  },
+});
+
+// Inline math extension
 export const MathInline = Node.create({
-  name: 'math_inline',
-  group: 'inline',
+  name: "math_inline",
+  group: "inline",
   atom: true,
   inline: true,
   selectable: true,
+
   addAttributes() {
-    return { latex: { default: '' } }
+    return {
+      latex: {
+        default: "",
+      },
+    };
   },
+
   parseHTML() {
     return [
-      { tag: 'span.math-inline', getAttrs: el => ({ latex: (el as HTMLElement).getAttribute('data-latex') || '' }) },
-    ]
+      {
+        tag: 'span[data-type="math-inline"]',
+        getAttrs: (element) => ({
+          latex: (element as HTMLElement).getAttribute("data-latex"),
+        }),
+      },
+    ];
   },
+
   renderHTML({ HTMLAttributes }) {
-    const tex = HTMLAttributes.latex ?? ''
-    // store latex in attribute; TipTap will render the view with KaTeX
-    return ['span', mergeAttributes({ class: 'math-inline', 'data-latex': tex }), tex]
+    return [
+      "span",
+      mergeAttributes(HTMLAttributes, {
+        "data-type": "math-inline",
+        "data-latex": HTMLAttributes.latex,
+      }),
+      HTMLAttributes.latex,
+    ];
   },
+
   addNodeView() {
     return ({ node }) => {
-      const dom = document.createElement('span')
-      dom.className = 'math-inline'
-      const tex: string = node.attrs.latex || ''
-      try {
-        dom.innerHTML = katex.renderToString(tex, { throwOnError: false })
-      } catch {
-        dom.textContent = `$${tex}$`
-      }
-      return { dom, update: (n) => {
-        if (n.type.name !== 'math_inline') return false
-        const t = n.attrs.latex || ''
-        try {
-          dom.innerHTML = katex.renderToString(t, { throwOnError: false })
-        } catch {
-          dom.textContent = `$${t}$`
-        }
-        return true
-      }}
-    }
-  },
-})
+      const dom = document.createElement("span");
+      dom.setAttribute("data-type", "math-inline");
+      const latex = node.attrs.latex || "";
 
-// Block math: $$ ... $$
+      try {
+        dom.innerHTML = katex.renderToString(latex, {
+          throwOnError: false,
+          displayMode: false,
+        });
+      } catch (error) {
+        dom.textContent = `$${latex}$`;
+      }
+
+      return {
+        dom,
+        update: (updatedNode) => {
+          if (updatedNode.type.name !== "math_inline") return false;
+
+          const newLatex = updatedNode.attrs.latex || "";
+          try {
+            dom.innerHTML = katex.renderToString(newLatex, {
+              throwOnError: false,
+              displayMode: false,
+            });
+          } catch (error) {
+            dom.textContent = `$${newLatex}$`;
+          }
+          return true;
+        },
+      };
+    };
+  },
+});
+
+// Block math extension
 export const MathBlock = Node.create({
-  name: 'math_display',
-  group: 'block',
+  name: "math_display",
+  group: "block",
   atom: true,
-  code: false,
   selectable: true,
   defining: true,
+
   addAttributes() {
-    return { latex: { default: '' } }
+    return {
+      latex: {
+        default: "",
+      },
+    };
   },
+
   parseHTML() {
     return [
-      { tag: 'div.math-display', getAttrs: el => ({ latex: (el as HTMLElement).getAttribute('data-latex') || '' }) },
-    ]
+      {
+        tag: 'div[data-type="math-display"]',
+        getAttrs: (element) => ({
+          latex: (element as HTMLElement).getAttribute("data-latex"),
+        }),
+      },
+    ];
   },
+
   renderHTML({ HTMLAttributes }) {
-    const tex = HTMLAttributes.latex ?? ''
-    return ['div', mergeAttributes({ class: 'math-display', 'data-latex': tex }), tex]
+    return [
+      "div",
+      mergeAttributes(HTMLAttributes, {
+        "data-type": "math-display",
+        "data-latex": HTMLAttributes.latex,
+      }),
+      HTMLAttributes.latex,
+    ];
   },
+
   addNodeView() {
     return ({ node }) => {
-      const dom = document.createElement('div')
-      dom.className = 'math-display'
-      const tex: string = node.attrs.latex || ''
+      const dom = document.createElement("div");
+      dom.setAttribute("data-type", "math-display");
+      const latex = node.attrs.latex || "";
+
       try {
-        dom.innerHTML = katex.renderToString(tex, { displayMode: true, throwOnError: false })
-      } catch {
-        dom.textContent = `$$${tex}$$`
+        dom.innerHTML = katex.renderToString(latex, {
+          throwOnError: false,
+          displayMode: true,
+        });
+      } catch (error) {
+        dom.textContent = `$$${latex}$$`;
       }
-      return { dom, update: (n) => {
-        if (n.type.name !== 'math_display') return false
-        const t = n.attrs.latex || ''
-        try {
-          dom.innerHTML = katex.renderToString(t, { displayMode: true, throwOnError: false })
-        } catch {
-          dom.textContent = `$$${t}$$`
-        }
-        return true
-      }}
-    }
+
+      return {
+        dom,
+        update: (updatedNode) => {
+          if (updatedNode.type.name !== "math_display") return false;
+
+          const newLatex = updatedNode.attrs.latex || "";
+          try {
+            dom.innerHTML = katex.renderToString(newLatex, {
+              throwOnError: false,
+              displayMode: true,
+            });
+          } catch (error) {
+            dom.textContent = `$$${newLatex}$$`;
+          }
+          return true;
+        },
+      };
+    };
   },
-})
+});
 
-// ProseMirror plugin for input rules ($...$ / $$...$$)
-export function mathPMPlugin() {
-  return mathPlugin
-}
-
-// Helpers to insert/update math nodes from UI
+// Helper functions
 export function insertInlineMath(editor: any) {
-  const tex = prompt('Inline LaTeX (without $):') || ''
-  if (!tex) return
+  const latex = prompt("Enter LaTeX formula:") || "";
+  if (!latex) return;
+
   editor
     .chain()
     .focus()
-    .insertContent({ type: 'math_inline', attrs: { latex: tex } })
-    .run()
+    .insertContent({
+      type: "math_inline",
+      attrs: { latex },
+    })
+    .run();
 }
+
 export function insertBlockMath(editor: any) {
-  const tex = prompt('Block LaTeX (without $$):') || ''
-  if (!tex) return
+  const latex = prompt("Enter LaTeX formula:") || "";
+  if (!latex) return;
+
   editor
     .chain()
     .focus()
-    .insertContent({ type: 'math_display', attrs: { latex: tex } })
-    .run()
+    .insertContent({
+      type: "math_display",
+      attrs: { latex },
+    })
+    .run();
 }
