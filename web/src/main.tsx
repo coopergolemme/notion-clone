@@ -14,7 +14,6 @@ import Graph from "./pages/Graph";
 import "katex/dist/katex.min.css";
 
 import "@mantine/core/styles.css";
-// ‼️ import spotlight styles after core package styles
 import "@mantine/spotlight/styles.css";
 
 const router = createBrowserRouter([

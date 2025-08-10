@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "clsx": "^2.1.1",
+    "lowlight": "^3.3.0",
     "mantine-datatable": "^8.2.0"
   }
 }
