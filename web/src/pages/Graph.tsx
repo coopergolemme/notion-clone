@@ -17,7 +17,8 @@ export default function Graph() {
       network = new Network(el.current, data, {
         nodes: { shape: 'dot', size: 12, font: { size: 14 } },
         edges: { arrows: { to: { enabled: true, scaleFactor: 0.6 } }, color: '#bbb' },
-        physics: { stabilization: true }
+        physics: { stabilization: true },
+        interaction: { hover: true }
       })
       networkRef.current = network
       network.on('doubleClick', (params: any) => {
