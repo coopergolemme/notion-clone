@@ -28,36 +28,58 @@ export function registerLinkRoutes(app: FastifyInstance) {
     return rows;
   });
 
-  // Optional: graph data (nodes + edges)
-  app.get('/graph', async () => {
+  // Graph data (nodes + edges)
+  app.get('/graph', async (req) => {
+    // Optional query filters (server-side prefilter)
+    const { tag, from, to, q } = (req.query as any) || {};
+
+    // base pages
     const pages = await query<{
-      id: string;
-      title: string;
-      content: string;
-      created_at: Date;
-      updated_at: Date;
-    }>('select id, title, content, created_at, updated_at from page', []);
+      id: string; title: string; tags: string[]; updated_at: string; content: string;
+    }>(`
+    SELECT id, title, COALESCE(tags,'{}') AS tags, updated_at, content
+    FROM page
+    WHERE ($1::text IS NULL OR $1 = '' OR EXISTS (
+      SELECT 1 FROM unnest(tags) t WHERE trim(lower(t)) = trim(lower($1))
+    ))
+      AND ($2::timestamptz IS NULL OR updated_at >= $2::timestamptz)
+      AND ($3::timestamptz IS NULL OR updated_at <= $3::timestamptz)
+      AND ($4::text IS NULL OR $4 = '' OR (title ILIKE '%'||$4||'%' OR content ILIKE '%'||$4||'%'))
+  `, [tag || null, from || null, to || null, q || null]);
 
-    const links = await query<{ from_page_id: string; to_page_id: string }>(
-      'select from_page_id, to_page_id from page_link', []
-    );
+    // edges with weight = number of mentions from from->to in current content
+    const links = await query<{ from_page_id: string; to_page_id: string; weight: number }>(`
+    SELECT pl.from_page_id, pl.to_page_id, COUNT(*)::int AS weight
+    FROM page_link pl
+    GROUP BY pl.from_page_id, pl.to_page_id
+  `, []);
 
-    function getSnippet(text: string) {
-      const sentences = text.match(/[^.!?]+[.!?]/g) || [];
-      return sentences.slice(0, 2).join(' ').trim();
-    }
+    // backlink counts (degree-in)
+    const degIn = await query<{ id: string; cnt: number }>(`
+    SELECT to_page_id AS id, COUNT(*)::int AS cnt
+    FROM page_link GROUP BY to_page_id
+  `, []);
 
-    function formatDate(d: Date) {
-      return d.toISOString().split('T')[0];
-    }
+    const degMap = new Map(degIn.rows.map(r => [r.id, r.cnt]));
 
-    return {
-      nodes: pages.rows.map(p => ({
+    // word count for optional display/weighting (quick estimate)
+    const nodes = pages.rows.map(p => {
+      const words = (p.content || '').trim().split(/\s+/).filter(Boolean).length;
+      return {
         id: p.id,
         label: p.title,
-        title: `${getSnippet(p.content)}<br/><br/>Created: ${formatDate(p.created_at)}<br/>Updated: ${formatDate(p.updated_at)}`,
-      })),
-      edges: links.rows.map(e => ({ from: e.from_page_id, to: e.to_page_id })),
-    };
+        tags: p.tags,
+        updated_at: p.updated_at,
+        word_count: words,
+        backlinks: degMap.get(p.id) || 0,
+      };
+    });
+
+    const nodeSet = new Set(nodes.map(n => n.id));
+    const edges = links.rows
+      .filter(e => nodeSet.has(e.from_page_id) && nodeSet.has(e.to_page_id))
+      .map(e => ({ from: e.from_page_id, to: e.to_page_id, weight: e.weight }));
+
+    return { nodes, edges };
   });
 }
