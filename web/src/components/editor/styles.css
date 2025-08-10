@@ -8,3 +8,6 @@
 .tiptap pre { background: var(--mantine-color-dark-6); color: #eaeef1; padding: 12px; border-radius: 8px; overflow: auto; }
 .tiptap code { background: var(--mantine-color-default); padding: 0 4px; border-radius: 4px; }
 .tiptap img { max-width: 100%; border-radius: 8px; }
+.tiptap .math-inline { padding: 0 2px; }
+.tiptap .math-display { margin: 12px 0; }
+.tiptap .katex-display { overflow-x: auto; }
