@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { api } from '../api'
-import { Stack, Group, TextInput, SegmentedControl, Menu, Button, TagsInput, Divider, Paper } from '@mantine/core'
-import RichEditor from '../components/RichEditor'
+import { Stack, Group, TextInput, SegmentedControl, Menu, Button, TagsInput, Divider } from '@mantine/core'
+import EditorPro from '../components/editor/EditorPro'
 import LatexEditor from '../components/LatexEditor'
 import HistoryDrawer from '../components/HistoryDrawer'
 
@@ -61,13 +61,17 @@ export default function PageView() {
           <Button variant="subtle" onClick={()=>setHistoryOpen(true)}>History</Button>
       </Group>
 
-      <Paper withBorder p="md" radius="md" shadow="xs">
-        {format === 'rich' ? (
-          <RichEditor value={page.content} onChange={(html)=>{ setPage({...page, content: html}); save({ content: html }) }} />
-        ) : (
-          <LatexEditor value={page.content} onChange={(src)=>{ setPage({...page, content: src}); save({ content: src }) }} />
-        )}
-      </Paper>
+      {format === 'rich' ? (
+        <EditorPro
+          value={page.content}
+          onChange={(html)=>{ setPage({...page, content: html}); save({ content: html }) }}
+        />
+      ) : (
+        <LatexEditor
+          value={page.content}
+          onChange={(src)=>{ setPage({...page, content: src}); save({ content: src }) }}
+        />
+      )}
 
       <Divider my="xs" />
 

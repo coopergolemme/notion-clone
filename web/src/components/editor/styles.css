@@ -1,0 +1,10 @@
+.tiptap {
+  min-height: 320px;
+  padding: 16px;
+  outline: none;
+}
+.tiptap p { margin: 0.6rem 0; }
+.tiptap h1,h2,h3 { margin: 1.2rem 0 0.6rem; }
+.tiptap pre { background: var(--mantine-color-dark-6); color: #eaeef1; padding: 12px; border-radius: 8px; overflow: auto; }
+.tiptap code { background: var(--mantine-color-default); padding: 0 4px; border-radius: 4px; }
+.tiptap img { max-width: 100%; border-radius: 8px; }
