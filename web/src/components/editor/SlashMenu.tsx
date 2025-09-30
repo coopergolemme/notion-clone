@@ -1,5 +1,6 @@
 import { FloatingMenu, Editor } from '@tiptap/react'
 import { Card, Stack, Text } from '@mantine/core'
+import { insertInlineMath, insertBlockMath } from './MathExtensions'
 
 const items = [
   { key: 'h1', label:'Heading 1', run:(e:Editor)=>e.chain().focus().setHeading({level:1}).run() },
@@ -11,6 +12,8 @@ const items = [
   { key: 'code', label:'Code block', run:(e)=>e.chain().focus().toggleCodeBlock().run() },
   { key: 'table', label:'Table', run:(e)=>e.chain().focus().insertTable({rows:3, cols:3, withHeaderRow:true}).run() },
   { key: 'image', label:'Image', run:(e)=>{ const url=prompt('Image URL'); if(url) e.chain().focus().setImage({src:url}).run() } },
+  { key: 'math-inline', label:'Inline math ($…$)', run:(e)=>insertInlineMath(e) },
+  { key: 'math-block',  label:'Block math ($$…$$)', run:(e)=>insertBlockMath(e) },
 ]
 
 export default function SlashMenu({ editor }:{ editor: Editor }) {
