@@ -8,11 +8,13 @@
     "infra"
   ],
   "scripts": {
-    "dev": "concurrently -n API,WEB -c yellow,cyan \"pnpm -C api dev\" \"pnpm -C web dev\""
+    "dev": "concurrently -n API,WEB -c yellow,cyan \"pnpm -C api dev\" \"pnpm -C web dev\"",
+    "test:e2e": "playwright test"
   },
   "devDependencies": {
     "@types/diff-match-patch": "^1.0.36",
-    "concurrently": "^9.0.0"
+    "concurrently": "^9.0.0",
+    "@playwright/test": "^1.56.0"
   },
   "dependencies": {
     "@tiptap/core": "^3.0.9",
@@ -20,6 +22,7 @@
     "clsx": "^2.1.1",
     "katex": "^0.16.22",
     "lowlight": "^3.3.0",
-    "mantine-datatable": "^8.2.0"
+    "mantine-datatable": "^8.2.0",
+    "playwright": "^1.56.0"
   }
 }
