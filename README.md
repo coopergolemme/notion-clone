@@ -1,6 +1,7 @@
-# Notion-Style AI Database — Starter Repo
+# Notion-Style AI Notetaking App
 
-An end-to-end starter for a Notion-like database with AI features (summarize, related pages, tag suggestions). 
+An AI powered notetaking application in a similar style to Notion, but with built in Latex support like Overleaf.
+
 Stack: **React + TypeScript + Tailwind** (web), **Fastify + TypeScript** (api), **PostgreSQL + pgvector** (db).
 
 ## Quick start (local)
