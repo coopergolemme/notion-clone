@@ -1,20 +1,24 @@
-import { FastifyInstance } from 'fastify'
-import { query as dbq } from '../db.js'
-import { embed } from '../embeddings.js'
-import { genText } from '../llm.js'
-import { toPgVector } from '../pgvector.js'
+import { FastifyInstance } from "fastify";
+import { query as dbq } from "../db.js";
+import { embed } from "../embeddings.js";
+import { genText } from "../llm.js";
+import { toPgVector } from "../pgvector.js";
 
-type PageLite = { id: string; title: string; snippet?: string }
+type PageLite = { id: string; title: string; snippet?: string };
 
 export function registerSearchRoutes(app: FastifyInstance) {
   // Hybrid search: vector + keyword + optional tag filter
-  app.get('/search', async (req) => {
-    const { q = '', tags = '' } = (req.query as any) || {}
-    const tagsArr = String(tags).split(',').map((s)=>s.trim()).filter(Boolean)
-    const vec = q ? await embed(String(q)) : null
+  app.get("/search", async (req) => {
+    const { q = "", tags = "" } = (req.query as any) || {};
+    const tagsArr = String(tags)
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    const vec = q ? await embed(String(q)) : null;
 
     // keyword part
-    const kw = await dbq<PageLite>(`
+    const kw = await dbq<PageLite>(
+      `
       SELECT p.id, p.title, left(p.content, 180) as snippet
       FROM page p
       LEFT JOIN page_tag pt ON pt.page_id = p.id
@@ -26,76 +30,98 @@ export function registerSearchRoutes(app: FastifyInstance) {
         ))
       GROUP BY p.id
       LIMIT 30
-    `, [q, tagsArr.length ? tagsArr : null])
+    `,
+      [q, tagsArr.length ? tagsArr : null]
+    );
 
     // vector part
-    let sem: PageLite[] = []
+    let sem: PageLite[] = [];
     if (vec) {
-      const pgVec = toPgVector(vec)
-      const r = await dbq<PageLite>(`
+      const pgVec = toPgVector(vec);
+      const r = await dbq<PageLite>(
+        `
         SELECT id, title, left(content, 180) as snippet
         FROM page
         ORDER BY embedding <=> $1::vector
         LIMIT 30
-      `, [pgVec])
-      sem = r.rows
+      `,
+        [pgVec]
+      );
+      sem = r.rows;
     }
 
     // simple rank merge: keyword hits boosted; dedupe by id
-    const map = new Map<string, { rec: PageLite; score: number }>()
-    kw.rows.forEach((r, i)=> map.set(r.id, { rec: r, score: 1.0 + (30 - i)/100 }))
-    sem.forEach((r, i)=>{
-      const prev = map.get(r.id)
-      const s = 0.8 + (30 - i)/200
-      map.set(r.id, { rec: r, score: prev ? prev.score + s : s })
-    })
+    const map = new Map<string, { rec: PageLite; score: number }>();
+    kw.rows.forEach((r, i) =>
+      map.set(r.id, { rec: r, score: 1.0 + (30 - i) / 100 })
+    );
+    sem.forEach((r, i) => {
+      const prev = map.get(r.id);
+      const s = 0.8 + (30 - i) / 200;
+      map.set(r.id, { rec: r, score: prev ? prev.score + s : s });
+    });
 
     return Array.from(map.values())
-      .sort((a,b)=>b.score - a.score)
+      .sort((a, b) => b.score - a.score)
       .slice(0, 20)
-      .map(x=>x.rec)
-  })
+      .map((x) => x.rec);
+  });
 
   // Multi-doc synthesized answer with caching
-  app.post('/ai/answer', async (req) => {
-    const { query, k = 5 } = (req.body as any) || {}
-    if (!query || typeof query !== 'string') return { answer: '', sources: [] }
+  app.post("/ai/answer", async (req) => {
+    const { query, k = 5 } = (req.body as any) || {};
+    if (!query || typeof query !== "string") return { answer: "", sources: [] };
 
     // cache hit?
     const cached = await dbq<{ id: string; answer: string; sources: any }>(
-      'SELECT id, answer, sources FROM ai_answer_cache WHERE query=$1 ORDER BY created_at DESC LIMIT 1',
+      "SELECT id, answer, sources FROM ai_answer_cache WHERE query=$1 ORDER BY created_at DESC LIMIT 1",
       [query.trim()]
-    )
+    );
     if (cached.rows.length) {
-      return { answer: cached.rows[0].answer, sources: cached.rows[0].sources }
+      return { answer: cached.rows[0].answer, sources: cached.rows[0].sources };
     }
 
-    const vec = await embed(query)
-    const pgVec = toPgVector(vec)
+    const vec = await embed(query);
+    const pgVec = toPgVector(vec);
     // fallback to keyword if no vec
-    const top = pgVec ? await dbq<{ id:string; title:string; content:string }>(`
+    const top = pgVec
+      ? await dbq<{ id: string; title: string; content: string }>(
+          `
       SELECT id, title, content
       FROM page
       ORDER BY embedding <=> $1::vector
       LIMIT $2
-    `, [pgVec, Math.min(10, Number(k)||5)]) : await dbq(`
+    `,
+          [pgVec, Math.min(10, Number(k) || 5)]
+        )
+      : await dbq(
+          `
       SELECT id, title, content FROM page
       WHERE title ILIKE $1 OR content ILIKE $1
       LIMIT $2
-    `, [`%${query}%`, Math.min(10, Number(k)||5)])
+    `,
+          [`%${query}%`, Math.min(10, Number(k) || 5)]
+        );
 
-    const docs = top.rows
-    if (!docs.length) return { answer: 'No relevant pages found.', sources: [] }
+    const docs = top.rows;
+    if (!docs.length)
+      return { answer: "No relevant pages found.", sources: [] };
 
-    const context = docs.map((d, i)=>`[${i+1}] ${d.title}\n${d.content}\n`).join('\n---\n')
-    const system = 'You are a concise assistant. Answer in 4–6 sentences. Cite sources as [#].'
-    const user = `Question: ${query}\n\nNotes:\n${context}\n\nAnswer:`
+    const context = docs
+      .map((d, i) => `[${i + 1}] ${d.title}\n${d.content}\n`)
+      .join("\n---\n");
+    const system =
+      "You are a concise assistant. Answer in 4–6 sentences. Cite sources as [#].";
+    const user = `Question: ${query}\n\nNotes:\n${context}\n\nAnswer:`;
 
-    let answer = await genText(system, user)
-    if (!answer) answer = 'Unable to generate an answer right now.'
+    let answer = await genText(system, user);
+    if (!answer) answer = "Unable to generate an answer right now.";
 
-    const sources = docs.map((d)=>({ id: d.id, title: d.title }))
-    await dbq('INSERT INTO ai_answer_cache(query, answer, sources) VALUES ($1,$2,$3)', [query.trim(), answer, JSON.stringify(sources)])
-    return { answer, sources }
-  })
+    const sources = docs.map((d) => ({ id: d.id, title: d.title }));
+    await dbq(
+      "INSERT INTO ai_answer_cache(query, answer, sources) VALUES ($1,$2,$3)",
+      [query.trim(), answer, JSON.stringify(sources)]
+    );
+    return { answer, sources };
+  });
 }

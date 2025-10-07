@@ -15,6 +15,12 @@ import "katex/dist/katex.min.css";
 
 import "@mantine/core/styles.css";
 import "@mantine/spotlight/styles.css";
+import "@mantine/notifications/styles.css";
+import LinkToPageModal from "./components/modals/LinkToPageModal";
+
+const modals = {
+  linkToPage: LinkToPageModal,
+} as const;
 
 const router = createBrowserRouter([
   {
@@ -46,8 +52,8 @@ function Root() {
               "Inter, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif",
           },
         }}>
-        <Notifications position="top-right" />
-        <ModalsProvider>
+        <Notifications />
+        <ModalsProvider modals={modals}>
           <Spotlight
             actions={actions}
             nothingFound="Type to search pages…"

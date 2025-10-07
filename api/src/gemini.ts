@@ -11,7 +11,7 @@ export const genAI = new GoogleGenerativeAI(apiKey);
 
 // Models
 export const EMBEDDING_MODEL = "text-embedding-004"; // 768-d
-export const GENERATION_MODEL = "gemini-1.5-flash";
+export const GENERATION_MODEL = "gemini-2.5-flash";
 
 // Helpers to get models
 export function getEmbeddingModel() {

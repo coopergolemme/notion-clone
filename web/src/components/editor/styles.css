@@ -11,3 +11,34 @@
 .tiptap .math-inline { padding: 0 2px; }
 .tiptap .math-display { margin: 12px 0; }
 .tiptap .katex-display { overflow-x: auto; }
+.tiptap .wiki-link {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  margin: 0 2px;
+  padding: 0;
+  border-radius: 999px;
+  color: transparent;
+  cursor: pointer;
+  transition: transform 120ms ease, box-shadow 120ms ease;
+}
+
+.tiptap .wiki-link::before {
+  content: attr(data-title);
+  color: var(--mantine-color-blue-7, #1d4ed8);
+  background: rgba(59, 130, 246, 0.16);
+  border: 1px solid rgba(59, 130, 246, 0.32);
+  border-radius: 999px;
+  padding: 2px 10px;
+  font-size: 0.85em;
+  font-weight: 500;
+  text-decoration: none;
+}
+
+.tiptap .wiki-link:hover::before,
+.tiptap .wiki-link:focus-visible::before {
+  background: rgba(59, 130, 246, 0.24);
+  border-color: rgba(59, 130, 246, 0.48);
+  color: var(--mantine-color-blue-9, #1d4ed8);
+  outline: none;
+}

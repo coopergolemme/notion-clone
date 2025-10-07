@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { api } from "../api";
+import { createPage } from "../utils/createPage";
 import {
   Button,
   Card,
@@ -28,7 +29,7 @@ export default function Home() {
   const loc = useLocation();
   const nav = useNavigate();
   const params = new URLSearchParams(loc.search);
-  const view = params.get("view") || "table";
+  const view = params.get("view") || "Gallery";
   const tagsParam = params.get("tags") || "";
   const activeTags = useMemo(
     () => (tagsParam ? tagsParam.split(",").filter(Boolean) : []),
@@ -43,6 +44,15 @@ export default function Home() {
     load();
   }, []);
 
+  async function createNewPage() {
+    try {
+      const id = await createPage();
+      nav(`/page/${id}`);
+    } catch (err) {
+      console.error("Failed to create page", err);
+    }
+  }
+
   const filtered = useMemo(() => {
     if (!activeTags.length) return rows;
     return rows.filter((r) =>
@@ -54,9 +64,7 @@ export default function Home() {
     <Stack>
       <Group justify="space-between">
         <Title order={3}>Your Pages</Title>
-        <Button onClick={() => nav("/") /* optional create flow */}>
-          New Page
-        </Button>
+        <Button onClick={createNewPage}>New Page</Button>
       </Group>
 
       {view === "table" ? (
@@ -104,7 +112,9 @@ export default function Home() {
                 <Text
                   size="sm"
                   c="dimmed">
-                  {r.snippet}
+                  <span style={{ whiteSpace: "pre-wrap" }}>
+                    {r.snippet.replace(/(<([^>]+)>)/gi, "")}
+                  </span>
                 </Text>
                 <Group gap="xs">
                   {(r.tags || []).map((t) => (

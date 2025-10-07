@@ -1,10 +1,10 @@
-import { FastifyInstance } from 'fastify';
-import { z } from 'zod';
-import { query } from '../db.js';
-import { embed } from '../embeddings.js';
-import { toPgVector } from '../pgvector.js';
-import { extractWikiLinks, normTitle } from '../utils/links.js';
-import { snapshotPageVersion } from '../utils/history.js';
+import { FastifyInstance } from "fastify";
+import { z } from "zod";
+import { query } from "../db.js";
+import { embed } from "../embeddings.js";
+import { toPgVector } from "../pgvector.js";
+import { extractWikiLinks, normTitle } from "../utils/links.js";
+import { snapshotPageVersion } from "../utils/history.js";
 
 const PageInput = z.object({
   title: z.string().min(1),
@@ -14,19 +14,20 @@ const PageInput = z.object({
   // web app attempted to create an "Untitled" page with an empty body.
   content: z.string(),
   tags: z.array(z.string()).optional(),
-  format: z.enum(['latex', 'rich']).optional()
+  format: z.enum(["latex", "rich"]).optional(),
 });
 
 async function refreshPageLinks(pageId: string) {
   // 1) get this page's title & content
   const { rows: pRows } = await query<{ title: string; content: string }>(
-    'select title, content from page where id=$1', [pageId]
+    "select title, content from page where id=$1",
+    [pageId]
   );
   if (!pRows.length) return;
 
   const titles = extractWikiLinks(pRows[0].content).map(normTitle);
   // short-circuit: clear links if none
-  await query('delete from page_link where from_page_id=$1', [pageId]);
+  await query("delete from page_link where from_page_id=$1", [pageId]);
   if (titles.length === 0) return;
 
   // 2) resolve titles -> page ids (exact case-insensitive title match)
@@ -46,7 +47,7 @@ async function refreshPageLinks(pageId: string) {
   if (resolved.length === 0) return;
 
   // 3) insert links
-  const values = resolved.map((toId, i) => `($1, $${i+2})`).join(',');
+  const values = resolved.map((toId, i) => `($1, $${i + 2})`).join(",");
   await query(
     `insert into page_link(from_page_id, to_page_id) values ${values}
      on conflict do nothing`,
@@ -55,7 +56,7 @@ async function refreshPageLinks(pageId: string) {
 }
 
 export function registerPageRoutes(app: FastifyInstance) {
-  app.post('/pages', async (req, reply) => {
+  app.post("/pages", async (req, reply) => {
     const body = PageInput.parse(req.body);
     const { title, content, tags = [], format } = body;
 
@@ -63,7 +64,7 @@ export function registerPageRoutes(app: FastifyInstance) {
     const tagIds: number[] = [];
     for (const t of tags) {
       const { rows } = await query<{ id: number }>(
-        'insert into tag(name) values($1) on conflict(name) do update set name=excluded.name returning id',
+        "insert into tag(name) values($1) on conflict(name) do update set name=excluded.name returning id",
         [t.trim().toLowerCase()]
       );
       tagIds.push(rows[0].id);
@@ -72,15 +73,18 @@ export function registerPageRoutes(app: FastifyInstance) {
     // insert page
     const { rows: pRows } = await query<{ id: string }>(
       format
-        ? 'insert into page(title, content, format) values($1, $2, $3) returning id'
-        : 'insert into page(title, content) values($1, $2) returning id',
+        ? "insert into page(title, content, format) values($1, $2, $3) returning id"
+        : "insert into page(title, content) values($1, $2) returning id",
       format ? [title, content, format] : [title, content]
     );
     const pageId = pRows[0].id;
 
     // page_tag
     for (const id of tagIds) {
-      await query('insert into page_tag(page_id, tag_id) values($1, $2) on conflict do nothing', [pageId, id]);
+      await query(
+        "insert into page_tag(page_id, tag_id) values($1, $2) on conflict do nothing",
+        [pageId, id]
+      );
     }
 
     // embed (best-effort)
@@ -88,7 +92,10 @@ export function registerPageRoutes(app: FastifyInstance) {
       const vec = await embed(`${title}\n\n${content}`);
       const pgVec = toPgVector(vec);
       if (pgVec) {
-        await query('update page set embedding = $1::vector where id=$2', [pgVec, pageId]);
+        await query("update page set embedding = $1::vector where id=$2", [
+          pgVec,
+          pageId,
+        ]);
       }
     } catch {}
 
@@ -98,7 +105,7 @@ export function registerPageRoutes(app: FastifyInstance) {
     reply.code(201).send({ id: pageId });
   });
 
-  app.get('/pages', async (req, reply) => {
+  app.get("/pages", async (req, reply) => {
     const rows = await query(`
       select p.id, p.title, left(p.content, 200) as snippet, p.created_at, 
              coalesce(json_agg(t.name) filter (where t.name is not null), '[]') as tags
@@ -112,40 +119,68 @@ export function registerPageRoutes(app: FastifyInstance) {
     return rows.rows;
   });
 
-  app.get('/pages/:id', async (req, reply) => {
+  app.get("/pages/:id", async (req, reply) => {
     const { id } = req.params as { id: string };
-    const page = await query('select id, title, content, format, created_at, updated_at from page where id=$1', [id]);
-    if (!page.rows.length) return reply.code(404).send({ error: 'not found' });
-    const tags = await query('select t.name from tag t join page_tag pt on pt.tag_id=t.id where pt.page_id=$1', [id]);
-    return { ...page.rows[0], tags: tags.rows.map(r => r.name) };
+    const page = await query(
+      "select id, title, content, format, created_at, updated_at from page where id=$1",
+      [id]
+    );
+    if (!page.rows.length) return reply.code(404).send({ error: "not found" });
+    const tags = await query(
+      "select t.name from tag t join page_tag pt on pt.tag_id=t.id where pt.page_id=$1",
+      [id]
+    );
+    return { ...page.rows[0], tags: tags.rows.map((r) => r.name) };
   });
 
-  app.put('/pages/:id', async (req, reply) => {
+  app.put("/pages/:id", async (req, reply) => {
     const { id } = req.params as { id: string };
     const body = PageInput.partial().parse(req.body);
     let { title, content, tags, format } = body;
 
-    if (title) await query('update page set title=$1, updated_at=now() where id=$2', [title, id]);
-    if (content) await query('update page set content=$1, updated_at=now() where id=$2', [content, id]);
-    if (format) await query('update page set format=$1, updated_at=now() where id=$2', [format, id]);
+    if (title)
+      await query("update page set title=$1, updated_at=now() where id=$2", [
+        title,
+        id,
+      ]);
+    if (content)
+      await query("update page set content=$1, updated_at=now() where id=$2", [
+        content,
+        id,
+      ]);
+    if (format)
+      await query("update page set format=$1, updated_at=now() where id=$2", [
+        format,
+        id,
+      ]);
 
     if (tags) {
-      await query('delete from page_tag where page_id=$1', [id]);
+      await query("delete from page_tag where page_id=$1", [id]);
       for (const t of tags) {
         const { rows } = await query<{ id: number }>(
-          'insert into tag(name) values($1) on conflict(name) do update set name=excluded.name returning id',
+          "insert into tag(name) values($1) on conflict(name) do update set name=excluded.name returning id",
           [t.trim().toLowerCase()]
         );
-        await query('insert into page_tag(page_id, tag_id) values($1, $2) on conflict do nothing', [id, rows[0].id]);
+        await query(
+          "insert into page_tag(page_id, tag_id) values($1, $2) on conflict do nothing",
+          [id, rows[0].id]
+        );
       }
     }
 
     // re-embed if updated
     if (title || content) {
-      const row = await query<{ title: string, content: string }>('select title, content from page where id=$1', [id]);
+      const row = await query<{ title: string; content: string }>(
+        "select title, content from page where id=$1",
+        [id]
+      );
       const vec = await embed(`${row.rows[0].title}\n\n${row.rows[0].content}`);
       const pgVec = toPgVector(vec);
-      if (pgVec) await query('update page set embedding=$1::vector where id=$2', [pgVec, id]);
+      if (pgVec)
+        await query("update page set embedding=$1::vector where id=$2", [
+          pgVec,
+          id,
+        ]);
     }
 
     await refreshPageLinks(id);
@@ -157,9 +192,9 @@ export function registerPageRoutes(app: FastifyInstance) {
     return { ok: true };
   });
 
-  app.delete('/pages/:id', async (req, reply) => {
+  app.delete("/pages/:id", async (req, reply) => {
     const { id } = req.params as { id: string };
-    await query('delete from page where id=$1', [id]);
+    await query("delete from page where id=$1", [id]);
     return { ok: true };
   });
 }

@@ -1,66 +1,155 @@
-import { Tabs, ScrollArea, Stack, Button, List, Text, Group, Badge, Textarea } from '@mantine/core'
-import { useEffect, useState } from 'react'
-import { useLocation } from 'react-router-dom'
-import { api } from '../api'
+import {
+  Tabs,
+  ScrollArea,
+  Stack,
+  Button,
+  List,
+  Text,
+  Group,
+  Badge,
+  Textarea,
+} from "@mantine/core";
+import { useEffect, useRef, useState } from "react";
+import { useLocation } from "react-router-dom";
+import { api } from "../api";
+import { OPEN_ASK_AI_EVENT } from "../utils/events";
+
+type RightAsideTab = "ai" | "backlinks" | "related";
 
 export default function RightAside() {
-  const loc = useLocation()
-  const m = loc.pathname.match(/\/page\/(.+)$/)
-  const pageId = m?.[1]
+  const loc = useLocation();
+  const m = loc.pathname.match(/\/page\/(.+)$/);
+  const pageId = m?.[1];
 
-  const [backlinks, setBacklinks] = useState<any[]>([])
-  const [related, setRelated] = useState<any[]>([])
-  const [ask, setAsk] = useState('')
-  const [answer, setAnswer] = useState('')
-  const [answering, setAnswering] = useState(false)
+  const [backlinks, setBacklinks] = useState<any[]>([]);
+  const [related, setRelated] = useState<any[]>([]);
+  const [ask, setAsk] = useState("");
+  const [answer, setAnswer] = useState("");
+  const [answering, setAnswering] = useState(false);
+  const [tab, setTab] = useState<RightAsideTab>("ai");
+  const askInputRef = useRef<HTMLTextAreaElement | null>(null);
 
   useEffect(() => {
-    if (!pageId) return
-    api.get(`/pages/${pageId}/backlinks`).then(({data})=>setBacklinks(data))
-    api.post('/ai/related', { pageId, k: 5 }).then(({data})=>setRelated(data))
-  }, [pageId])
+    if (!pageId) return;
+    api
+      .get(`/pages/${pageId}/backlinks`)
+      .then(({ data }) => setBacklinks(data));
+    api
+      .post("/ai/related", { pageId, k: 5 })
+      .then(({ data }) => setRelated(data));
+  }, [pageId]);
+
+  useEffect(() => {
+    const handleOpenAskAI = (event: Event) => {
+      const detail = (event as CustomEvent<{ query?: string }>).detail;
+      setTab("ai");
+      if (detail?.query !== undefined) {
+        setAsk(detail.query);
+        setAnswer("");
+      }
+      window.setTimeout(() => {
+        askInputRef.current?.focus();
+        if (detail?.query) {
+          const el = askInputRef.current;
+          if (el) {
+            const len = el.value.length;
+            el.setSelectionRange(len, len);
+          }
+        }
+      }, 0);
+    };
+    window.addEventListener(
+      OPEN_ASK_AI_EVENT,
+      handleOpenAskAI as EventListener
+    );
+    return () =>
+      window.removeEventListener(
+        OPEN_ASK_AI_EVENT,
+        handleOpenAskAI as EventListener
+      );
+  }, []);
 
   async function askAI() {
-    setAnswering(true)
+    setAnswering(true);
     try {
-      const { data } = await api.post('/ai/answer', { query: ask, k: 5 })
-      setAnswer(data?.answer || '')
-    } finally { setAnswering(false) }
+      const { data } = await api.post("/ai/answer", { query: ask, k: 5 });
+      setAnswer(data?.answer || "");
+    } finally {
+      setAnswering(false);
+    }
   }
 
   return (
-    <Tabs defaultValue="ai" keepMounted={false}>
+    <Tabs
+      value={tab}
+      onChange={(value) => {
+        if (value) setTab(value as RightAsideTab);
+      }}
+      keepMounted={false}>
       <Tabs.List grow>
         <Tabs.Tab value="ai">AI</Tabs.Tab>
         <Tabs.Tab value="backlinks">Backlinks</Tabs.Tab>
         <Tabs.Tab value="related">Related</Tabs.Tab>
       </Tabs.List>
 
-      <Tabs.Panel value="ai" p="md">
+      <Tabs.Panel
+        value="ai"
+        p="md">
         <Stack gap="sm">
-          <Textarea value={ask} onChange={(e)=>setAsk(e.currentTarget.value)} placeholder="Ask across your pages…" autosize minRows={2}/>
-          <Button loading={answering} onClick={askAI}>Ask</Button>
+          <Textarea
+            ref={askInputRef}
+            value={ask}
+            onChange={(e) => setAsk(e.currentTarget.value)}
+            placeholder="Ask across your pages…"
+            autosize
+            minRows={2}
+          />
+          <Button
+            loading={answering}
+            onClick={askAI}>
+            Ask
+          </Button>
           {answer && <Text size="sm">{answer}</Text>}
         </Stack>
       </Tabs.Panel>
 
-      <Tabs.Panel value="backlinks" p="md">
+      <Tabs.Panel
+        value="backlinks"
+        p="md">
         <ScrollArea>
-          {!backlinks.length && <Text c="dimmed" size="sm">No backlinks yet</Text>}
+          {!backlinks.length && (
+            <Text
+              c="dimmed"
+              size="sm">
+              No backlinks yet
+            </Text>
+          )}
           <List>
-            {backlinks.map((b:any)=>(
-              <List.Item key={b.id}><a href={`/page/${b.id}`}>{b.title}</a></List.Item>
+            {backlinks.map((b: any) => (
+              <List.Item key={b.id}>
+                <a href={`/page/${b.id}`}>{b.title}</a>
+              </List.Item>
             ))}
           </List>
         </ScrollArea>
       </Tabs.Panel>
 
-      <Tabs.Panel value="related" p="md">
+      <Tabs.Panel
+        value="related"
+        p="md">
         <ScrollArea>
-          {!related.length && <Text c="dimmed" size="sm">No related pages yet</Text>}
+          {!related.length && (
+            <Text
+              c="dimmed"
+              size="sm">
+              No related pages yet
+            </Text>
+          )}
           <Stack>
-            {related.map((r:any)=>(
-              <Group key={r.id} justify="space-between">
+            {related.map((r: any) => (
+              <Group
+                key={r.id}
+                justify="space-between">
                 <a href={`/page/${r.id}`}>{r.title}</a>
                 <Badge variant="light">similar</Badge>
               </Group>
@@ -69,5 +158,5 @@ export default function RightAside() {
         </ScrollArea>
       </Tabs.Panel>
     </Tabs>
-  )
+  );
 }

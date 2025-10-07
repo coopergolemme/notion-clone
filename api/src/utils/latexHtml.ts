@@ -1,4 +1,4 @@
-import katex from 'katex';
+import katex from "katex";
 
 function renderMathBlocks(src: string): string {
   // Render $$...$$ block math and $...$ inline math
@@ -9,7 +9,10 @@ function renderMathBlocks(src: string): string {
   // Block math: $$...$$
   html = html.replace(/\$\$([\s\S]+?)\$\$/g, (_, expr) => {
     try {
-      return `<div class="math-block">${katex.renderToString(expr.trim(), { displayMode: true, throwOnError: false })}</div>`;
+      return `<div class="math-block">${katex.renderToString(expr.trim(), {
+        displayMode: true,
+        throwOnError: false,
+      })}</div>`;
     } catch {
       return `<pre class="math-error">$${expr}$$</pre>`;
     }
@@ -18,7 +21,10 @@ function renderMathBlocks(src: string): string {
   // Inline math: $...$
   html = html.replace(/(^|[^$])\$([^\n$]+?)\$/g, (m, pre, expr) => {
     try {
-      return `${pre}<span class="math-inline">${katex.renderToString(expr.trim(), { displayMode: false, throwOnError: false })}</span>`;
+      return `${pre}<span class="math-inline">${katex.renderToString(
+        expr.trim(),
+        { displayMode: false, throwOnError: false }
+      )}</span>`;
     } catch {
       return `${pre}<code>$${expr}$</code>`;
     }
@@ -34,7 +40,7 @@ export function latexToHtmlPage(title: string, bodySrc: string): string {
 <html>
 <head>
   <meta charset="utf-8"/>
-  <title>${title ? title.replace(/</g,'&lt;') : 'Document'}</title>
+  <title>${title ? title.replace(/</g, "&lt;") : "Document"}</title>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.10/dist/katex.min.css">
   <style>
     body { font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Inter, 'Helvetica Neue', Arial; line-height: 1.5; padding: 24px; max-width: 800px; margin: 0 auto; }
@@ -46,7 +52,7 @@ export function latexToHtmlPage(title: string, bodySrc: string): string {
   </style>
 </head>
 <body>
-  <h1>${title ? title.replace(/</g,'&lt;') : ''}</h1>
+  <h1>${title ? title.replace(/</g, "&lt;") : ""}</h1>
   <hr/>
   <div>${bodyHtml}</div>
 </body>

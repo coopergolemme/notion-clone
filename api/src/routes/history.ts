@@ -1,9 +1,9 @@
-import { FastifyInstance } from 'fastify';
-import { query } from '../db.js';
+import { FastifyInstance } from "fastify";
+import { query } from "../db.js";
 
 export function registerHistoryRoutes(app: FastifyInstance) {
   // List recent versions
-  app.get('/pages/:id/history', async (req) => {
+  app.get("/pages/:id/history", async (req) => {
     const { id } = req.params as { id: string };
     const { rows } = await query(
       `
@@ -19,7 +19,7 @@ export function registerHistoryRoutes(app: FastifyInstance) {
   });
 
   // Fetch a specific version
-  app.get('/pages/:id/history/:versionId', async (req, reply) => {
+  app.get("/pages/:id/history/:versionId", async (req, reply) => {
     const { id, versionId } = req.params as { id: string; versionId: string };
     const { rows } = await query(
       `
@@ -30,12 +30,12 @@ export function registerHistoryRoutes(app: FastifyInstance) {
     `,
       [id, versionId]
     );
-    if (!rows.length) return reply.code(404).send({ error: 'not found' });
+    if (!rows.length) return reply.code(404).send({ error: "not found" });
     return rows[0];
   });
 
   // Restore a version (overwrites current page fields)
-  app.post('/pages/:id/history/:versionId/restore', async (req, reply) => {
+  app.post("/pages/:id/history/:versionId/restore", async (req, reply) => {
     const { id, versionId } = req.params as { id: string; versionId: string };
     const { rows } = await query(
       `
@@ -44,7 +44,7 @@ export function registerHistoryRoutes(app: FastifyInstance) {
     `,
       [id, versionId]
     );
-    if (!rows.length) return reply.code(404).send({ error: 'not found' });
+    if (!rows.length) return reply.code(404).send({ error: "not found" });
     const v = rows[0];
     await query(
       `
@@ -58,7 +58,7 @@ export function registerHistoryRoutes(app: FastifyInstance) {
       INSERT INTO page_version(page_id, title, content, format, tags, created_by)
       VALUES ($1,$2,$3,$4,$5,$6)
     `,
-    [id, v.title, v.content, v.format, v.tags, (req as any)?.user?.id || null]
+      [id, v.title, v.content, v.format, v.tags, (req as any)?.user?.id || null]
     );
     return { ok: true };
   });

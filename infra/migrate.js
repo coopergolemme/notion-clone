@@ -7,7 +7,11 @@ import { fileURLToPath } from 'node:url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const MIGRATION = path.join(__dirname, 'migrations', '001_init.sql');
+const MIGRATIONS_DIR = path.join(__dirname, 'migrations');
+const MIGRATIONS = fs.readdirSync(MIGRATIONS_DIR)
+  .filter(f => f.endsWith('.sql'))
+  .sort()
+  .map(f => path.join(MIGRATIONS_DIR, f));
 const DEFAULT_DB = 'postgres://postgres:postgres@localhost:5432/notion_ai';
 const DATABASE_URL = process.env.DATABASE_URL || DEFAULT_DB;
 
@@ -27,7 +31,9 @@ function sh(command, opts = {}) {
 
 async function run() {
   if (has('psql')) {
-    sh(`psql "${DATABASE_URL}" -f "${MIGRATION}"`);
+    for (const file of MIGRATIONS) {
+      sh(`psql "${DATABASE_URL}" -f "${file}"`);
+    }
     return;
   }
   if (has('docker', ['--version'])) {
@@ -36,17 +42,25 @@ async function run() {
     sh(`${compose} -f "${composeFile}" up -d`);
     const cid = execSync(`${compose} -f "${composeFile}" ps -q db`).toString().trim();
     if (!cid) throw new Error('db container not found');
-    sh(`docker cp "${MIGRATION}" ${cid}:/tmp/001_init.sql`);
-    sh(`${compose} -f "${composeFile}" exec -T db psql -U postgres -d notion_ai -f /tmp/001_init.sql`);
+    for (const file of MIGRATIONS) {
+      const base = path.basename(file);
+      sh(`docker cp "${file}" ${cid}:/tmp/${base}`);
+      sh(`${compose} -f "${composeFile}" exec -T db psql -U postgres -d notion_ai -f /tmp/${base}`);
+    }
     return;
   }
   // node pg fallback
   const { Client } = await import('pg');
-  const sql = fs.readFileSync(MIGRATION, 'utf8');
   const client = new Client({ connectionString: DATABASE_URL });
   await client.connect();
-  await client.query(sql);
-  await client.end();
+  try {
+    for (const file of MIGRATIONS) {
+      const sql = fs.readFileSync(file, 'utf8');
+      await client.query(sql);
+    }
+  } finally {
+    await client.end();
+  }
 }
 
 run().catch(e => { console.error(e); process.exit(1); });
