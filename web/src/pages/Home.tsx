@@ -11,10 +11,13 @@ import {
   SimpleGrid,
   Text,
   Title,
+  ActionIcon,
+  Tooltip,
 } from "@mantine/core";
 import { DataTable } from "mantine-datatable";
 import "@mantine/core/styles.layer.css";
 import "mantine-datatable/styles.layer.css";
+import { IconTrash } from "@tabler/icons-react";
 
 type Row = {
   id: string;
@@ -40,6 +43,15 @@ export default function Home() {
     const { data } = await api.get<Row[]>("/pages");
     setRows(data);
   }
+  const deletePage = async (id: string) => {
+    try {
+      await api.delete(`/pages/${id}`);
+      setRows((prev) => prev.filter((p) => p.id !== id));
+    } catch (err) {
+      console.error("Failed to delete page", err);
+    }
+  };
+
   useEffect(() => {
     load();
   }, []);
@@ -62,11 +74,7 @@ export default function Home() {
 
   return (
     <Stack>
-      <Group justify="space-between">
-        <Title order={3}>Your Pages</Title>
-        <Button onClick={createNewPage}>New Page</Button>
-      </Group>
-
+      <Title order={3}>Your Pages</Title>
       {view === "table" ? (
         <DataTable
           withTableBorder
@@ -106,9 +114,18 @@ export default function Home() {
               withBorder
               shadow="sm">
               <Stack gap={6}>
-                <a href={`/page/${r.id}`}>
-                  <Text fw={600}>{r.title}</Text>
-                </a>
+                <Group justify="space-between">
+                  <a href={`/page/${r.id}`}>
+                    <Text fw={600}>{r.title}</Text>
+                  </a>
+                  <Tooltip label="Delete Page">
+                    <ActionIcon
+                      size="md"
+                      onClick={() => deletePage(r.id)}>
+                      <IconTrash />
+                    </ActionIcon>
+                  </Tooltip>
+                </Group>
                 <Text
                   size="sm"
                   c="dimmed">

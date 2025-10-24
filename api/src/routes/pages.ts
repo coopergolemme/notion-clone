@@ -8,10 +8,6 @@ import { snapshotPageVersion } from "../utils/history.js";
 
 const PageInput = z.object({
   title: z.string().min(1),
-  // Allow creating pages with empty content so that clients can
-  // initialize a page before any text is added. Previously this schema
-  // required at least one character which caused a 400 error when the
-  // web app attempted to create an "Untitled" page with an empty body.
   content: z.string(),
   tags: z.array(z.string()).optional(),
   format: z.enum(["latex", "rich"]).optional(),
