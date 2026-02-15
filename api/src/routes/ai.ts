@@ -3,7 +3,7 @@ import { FastifyInstance } from "fastify";
 import { query } from "../db.js";
 import { embed } from "../embeddings.js";
 import { toPgVector } from "../pgvector.js";
-import { genText } from "../llm.js";
+import { genText, genTextStream } from "../llm.js";
 import katex from "katex";
 import { z } from "zod";
 
@@ -16,6 +16,25 @@ function toKebab(s: string) {
 }
 
 export function registerAIRoutes(app: FastifyInstance) {
+  const InlineSuggestInput = z.object({
+    pageId: z.string().uuid().optional(),
+    selectionText: z.string().default(""),
+    cursorBefore: z.string().default(""),
+    cursorAfter: z.string().default(""),
+    mode: z
+      .enum(["continue", "rewrite", "fix", "summarize", "explain"])
+      .default("continue"),
+    tone: z.string().default("neutral"),
+    maxTokens: z.number().int().min(32).max(512).default(180),
+    variants: z.number().int().min(1).max(5).default(1),
+    replaceRange: z
+      .object({
+        from: z.number().int().min(0),
+        to: z.number().int().min(0),
+      })
+      .optional(),
+  });
+
   app.post("/ai/latex-from-text", async (req, reply) => {
     const LatexFromTextInput = z.object({
       prompt: z.string().min(3),
@@ -84,24 +103,6 @@ export function registerAIRoutes(app: FastifyInstance) {
   });
 
   app.post("/ai/inline-suggest", async (req, reply) => {
-    const InlineSuggestInput = z.object({
-      pageId: z.string().uuid().optional(),
-      selectionText: z.string().default(""),
-      cursorBefore: z.string().default(""),
-      cursorAfter: z.string().default(""),
-      mode: z
-        .enum(["continue", "rewrite", "fix", "summarize", "explain"])
-        .default("continue"),
-      tone: z.string().default("neutral"),
-      maxTokens: z.number().int().min(32).max(512).default(180),
-      replaceRange: z
-        .object({
-          from: z.number().int().min(0),
-          to: z.number().int().min(0),
-        })
-        .optional(),
-    });
-
     const parsed = InlineSuggestInput.parse(req.body ?? {});
     const {
       pageId,
@@ -111,68 +112,143 @@ export function registerAIRoutes(app: FastifyInstance) {
       mode,
       tone,
       maxTokens,
+      variants,
       replaceRange,
     } = parsed;
 
-    let pageContext = "";
-    if (pageId) {
-      const p = await query<{ title: string; content: string }>(
-        "select title, content from page where id=$1 limit 1",
-        [pageId]
-      );
-      if (p.rows.length) {
-        const { title, content } = p.rows[0];
-        pageContext = `Page title: ${title}\nPage content (excerpt): ${stripHtml(
-          content
-        ).slice(0, 2000)}`;
-      }
+    const ctx = await buildInlineSuggestContext({
+      pageId,
+      selectionText,
+      cursorBefore,
+      cursorAfter,
+      mode,
+      tone,
+      maxTokens,
+    });
+    const primaryRaw = await genText(ctx.system, ctx.user);
+    const primary = cleanInlineSuggestion(primaryRaw, mode, selectionText);
+    const suggestions = await buildInlineVariants({
+      primary,
+      variants,
+      mode,
+      selectionText,
+      system: ctx.system,
+    });
+    if (!suggestions.length || !suggestions[0]?.trim()) {
+      return reply.code(503).send({
+        error:
+          "Inline suggestion unavailable. Verify configured LLM provider connectivity.",
+      });
     }
 
-    const taskByMode: Record<typeof mode, string> = {
-      continue:
-        "Continue the draft naturally from the cursor position using the same voice.",
-      rewrite:
-        "Rewrite the selected text for clarity while preserving meaning.",
-      fix: "Fix grammar, spelling, punctuation, and awkward phrasing.",
-      summarize: "Summarize the selected text into a concise version.",
-      explain: "Explain the selected text clearly in simpler language.",
-    };
-
-    const system = [
-      "You are an inline writing assistant for a notes app.",
-      "Return plain text only. No markdown fences. No surrounding quotes.",
-      "Keep the suggestion concise and directly usable in the document.",
-      `Target tone: ${tone}.`,
-      `Maximum length: about ${Math.max(20, Math.floor(maxTokens * 0.75))} words.`,
-    ].join(" ");
-
-    const user = [
-      `Task: ${taskByMode[mode]}`,
-      selectionText
-        ? `Selected text:\n${selectionText}`
-        : "Selected text: (none)",
-      `Text before cursor:\n${cursorBefore}`,
-      `Text after cursor:\n${cursorAfter}`,
-      pageContext,
-      "Return only the suggested replacement/continuation text.",
-    ]
-      .filter(Boolean)
-      .join("\n\n");
-
-    const raw = await genText(system, user);
-    const suggestion = cleanInlineSuggestion(raw, mode, selectionText);
-
     return {
-      suggestion,
+      suggestion: suggestions[0] || "",
+      suggestions,
       replaceRange:
         replaceRange ??
         (() => {
           const len = selectionText.length;
           return { from: 0, to: len };
         })(),
-      confidence: suggestion ? 0.82 : 0.24,
+      confidence: suggestions[0] ? 0.82 : 0.24,
       citations: pageId ? [{ type: "page", id: pageId }] : [],
     };
+  });
+
+  app.post("/ai/inline-suggest/stream", async (req, reply) => {
+    const parsed = InlineSuggestInput.parse(req.body ?? {});
+    const {
+      pageId,
+      selectionText,
+      cursorBefore,
+      cursorAfter,
+      mode,
+      tone,
+      maxTokens,
+      variants,
+      replaceRange,
+    } = parsed;
+
+    const ctx = await buildInlineSuggestContext({
+      pageId,
+      selectionText,
+      cursorBefore,
+      cursorAfter,
+      mode,
+      tone,
+      maxTokens,
+    });
+
+    const origin = (req.headers.origin as string | undefined) || "*";
+    reply.raw.setHeader("Access-Control-Allow-Origin", origin);
+    reply.raw.setHeader("Vary", "Origin");
+    reply.raw.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+    reply.raw.setHeader(
+      "Access-Control-Allow-Headers",
+      "Content-Type, Authorization"
+    );
+    reply.raw.setHeader("Content-Type", "text/event-stream; charset=utf-8");
+    reply.raw.setHeader("Cache-Control", "no-cache, no-transform");
+    reply.raw.setHeader("Connection", "keep-alive");
+    reply.hijack();
+
+    let primaryRaw = "";
+    const writeEvent = (event: string, data: any) => {
+      reply.raw.write(`event: ${event}\n`);
+      reply.raw.write(`data: ${JSON.stringify(data)}\n\n`);
+    };
+
+    const streamed = await genTextStream(ctx.system, ctx.user, async (token) => {
+      primaryRaw += token;
+      writeEvent("token", { text: token });
+    });
+
+    const primary = cleanInlineSuggestion(
+      streamed || primaryRaw,
+      mode,
+      selectionText
+    );
+    const suggestions = await buildInlineVariants({
+      primary,
+      variants,
+      mode,
+      selectionText,
+      system: ctx.system,
+    });
+    if (!suggestions.length || !suggestions[0]?.trim()) {
+      writeEvent("error", {
+        error:
+          "Inline suggestion unavailable. Verify configured LLM provider connectivity.",
+      });
+      writeEvent("done", {
+        suggestion: "",
+        suggestions: [],
+        replaceRange:
+          replaceRange ??
+          (() => {
+            const len = selectionText.length;
+            return { from: 0, to: len };
+          })(),
+        confidence: 0,
+        citations: pageId ? [{ type: "page", id: pageId }] : [],
+      });
+      reply.raw.end();
+      return;
+    }
+
+    writeEvent("done", {
+      suggestion: suggestions[0] || "",
+      suggestions,
+      replaceRange:
+        replaceRange ??
+        (() => {
+          const len = selectionText.length;
+          return { from: 0, to: len };
+        })(),
+      confidence: suggestions[0] ? 0.82 : 0.24,
+      citations: pageId ? [{ type: "page", id: pageId }] : [],
+    });
+    reply.raw.end();
   });
 
   // RELATED by cosine distance
@@ -334,8 +410,109 @@ function cleanInlineSuggestion(
       .trim();
     if (cleaned) return cleaned;
   }
-  if (mode === "continue") return "Continue the paragraph with a specific point.";
-  return selectionText || "";
+  return "";
+}
+
+async function buildInlineSuggestContext({
+  pageId,
+  selectionText,
+  cursorBefore,
+  cursorAfter,
+  mode,
+  tone,
+  maxTokens,
+}: {
+  pageId?: string;
+  selectionText: string;
+  cursorBefore: string;
+  cursorAfter: string;
+  mode: "continue" | "rewrite" | "fix" | "summarize" | "explain";
+  tone: string;
+  maxTokens: number;
+}) {
+  let pageContext = "";
+  if (pageId) {
+    const p = await query<{ title: string; content: string }>(
+      "select title, content from page where id=$1 limit 1",
+      [pageId]
+    );
+    if (p.rows.length) {
+      const { title, content } = p.rows[0];
+      pageContext = `Page title: ${title}\nPage content (excerpt): ${stripHtml(
+        content
+      ).slice(0, 2000)}`;
+    }
+  }
+
+  const taskByMode: Record<typeof mode, string> = {
+    continue:
+      "Continue the draft naturally from the cursor position using the same voice. Do not repeat the text before the cursor. Return only the next continuation text.",
+    rewrite:
+      "Rewrite the selected text for clarity while preserving meaning.",
+    fix: "Fix grammar, spelling, punctuation, and awkward phrasing.",
+    summarize: "Summarize the selected text into a concise version.",
+    explain: "Explain the selected text clearly in simpler language.",
+  };
+
+  const system = [
+    "You are an inline writing assistant for a notes app.",
+    "Return plain text only. No markdown fences. No surrounding quotes.",
+    "Keep the suggestion concise and directly usable in the document.",
+    `Target tone: ${tone}.`,
+    `Maximum length: about ${Math.max(20, Math.floor(maxTokens * 0.75))} words.`,
+  ].join(" ");
+
+  const user = [
+    `Task: ${taskByMode[mode]}`,
+    selectionText ? `Selected text:\n${selectionText}` : "Selected text: (none)",
+    `Text before cursor:\n${cursorBefore}`,
+    `Text after cursor:\n${cursorAfter}`,
+    pageContext,
+    mode === "continue"
+      ? "Write only what should be inserted at the cursor as a continuation."
+      : "",
+    "Return only the suggested replacement/continuation text.",
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+
+  return { system, user };
+}
+
+async function buildInlineVariants({
+  primary,
+  variants,
+  mode,
+  selectionText,
+  system,
+}: {
+  primary: string;
+  variants: number;
+  mode: "continue" | "rewrite" | "fix" | "summarize" | "explain";
+  selectionText: string;
+  system: string;
+}) {
+  const out = [primary].filter(Boolean);
+  const target = Math.max(1, variants);
+  for (let i = 1; i < target; i++) {
+    const altPrompt = [
+      "Create an alternative to this inline suggestion.",
+      `Base suggestion: ${primary}`,
+      mode === "continue"
+        ? "Alternative should continue with a different angle."
+        : "Alternative should preserve meaning but vary wording.",
+      selectionText ? `Original selected text:\n${selectionText}` : "",
+      "Return only the alternative text.",
+    ]
+      .filter(Boolean)
+      .join("\n\n");
+    const altRaw = await genText(system, altPrompt);
+    const alt = cleanInlineSuggestion(altRaw, mode, selectionText);
+    if (!alt) continue;
+    if (out.includes(alt)) continue;
+    out.push(alt);
+  }
+  return out.length ? out : [];
 }
 
 function cleanLatexCandidate(raw: string | null) {

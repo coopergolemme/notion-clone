@@ -56,10 +56,12 @@ type Props = {
 type InlineMode = "continue" | "rewrite" | "fix" | "summarize" | "explain";
 
 type InlineSuggestion = {
-  suggestion: string;
+  suggestions: string[];
+  activeIndex: number;
   replaceRange: { from: number; to: number };
   mode: InlineMode;
   tone: string;
+  streaming?: boolean;
 };
 
 export default function EditorPro({
@@ -84,12 +86,20 @@ export default function EditorPro({
   const [requestingSuggestion, setRequestingSuggestion] = useState(false);
   const [inlineSuggestion, setInlineSuggestion] =
     useState<InlineSuggestion | null>(null);
+  const inlineStreamAbortRef = useRef<AbortController | null>(null);
+  const [inlineControlsPos, setInlineControlsPos] = useState<{
+    x: number;
+    y: number;
+  } | null>(null);
   const inlineSuggestionRef = useRef<InlineSuggestion | null>(null);
   const requestInlineSuggestionRef = useRef<
     ((mode?: InlineMode) => Promise<void>) | null
   >(null);
   const acceptInlineSuggestionRef = useRef<(() => void) | null>(null);
   const rejectInlineSuggestionRef = useRef<(() => void) | null>(null);
+  const cycleInlineSuggestionRef = useRef<((delta: number) => void) | null>(
+    null
+  );
   const popoverOpenRef = useRef(false);
   const openLatexPopoverRef = useRef<
     ((options: {
@@ -148,43 +158,165 @@ export default function EditorPro({
         " "
       );
       const replaceRange = { from, to };
+      const payload = {
+        pageId,
+        mode,
+        tone: "neutral",
+        maxTokens: 180,
+        variants: 3,
+        selectionText,
+        cursorBefore,
+        cursorAfter,
+        replaceRange,
+      };
 
+      inlineStreamAbortRef.current?.abort();
+      const ctrl = new AbortController();
+      inlineStreamAbortRef.current = ctrl;
       setRequestingSuggestion(true);
+      setInlineSuggestion({
+        suggestions: [""],
+        activeIndex: 0,
+        replaceRange,
+        mode,
+        tone: "neutral",
+        streaming: true,
+      });
+
       try {
-        const { data } = await api.post<{
-          suggestion: string;
-          replaceRange?: { from: number; to: number };
-        }>("/ai/inline-suggest", {
-          pageId,
-          mode,
-          tone: "neutral",
-          maxTokens: 180,
-          selectionText,
-          cursorBefore,
-          cursorAfter,
-          replaceRange,
+        const baseURL =
+          (api.defaults.baseURL as string | undefined) || window.location.origin;
+        const endpoint = new URL("/ai/inline-suggest/stream", baseURL).toString();
+        const res = await fetch(endpoint, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(payload),
+          signal: ctrl.signal,
         });
-        const suggestion = String(data?.suggestion || "").trim();
-        if (!suggestion) {
-          notifications.show({
-            message: "No suggestion returned",
-            color: "yellow",
-          });
-          return;
+
+        if (!res.ok || !res.body) {
+          throw new Error(`Inline stream failed: ${res.status}`);
         }
-        setInlineSuggestion({
-          suggestion,
-          replaceRange: data?.replaceRange || replaceRange,
-          mode,
-          tone: "neutral",
-        });
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+        let eventName = "message";
+        let streamedText = "";
+        let streamError = "";
+        let donePayload:
+          | {
+              suggestions?: string[];
+              replaceRange?: { from: number; to: number };
+            }
+          | null = null;
+
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const blocks = buffer.split("\n\n");
+          buffer = blocks.pop() || "";
+          for (const block of blocks) {
+            const lines = block.split("\n");
+            let data = "";
+            eventName = "message";
+            for (const line of lines) {
+              if (line.startsWith("event:")) {
+                eventName = line.slice(6).trim();
+              }
+              if (line.startsWith("data:")) {
+                data += line.slice(5).trim();
+              }
+            }
+            if (!data) continue;
+            const payload = JSON.parse(data);
+            if (eventName === "token") {
+              const token = String(payload?.text || "");
+              if (!token) continue;
+              streamedText += token;
+              setInlineSuggestion((prev) => {
+                if (!prev) return prev;
+                const list = [...prev.suggestions];
+                list[0] = (list[0] || "") + token;
+                return { ...prev, suggestions: list };
+              });
+            }
+            if (eventName === "done") {
+              donePayload = payload;
+            }
+            if (eventName === "error") {
+              streamError = String(payload?.error || "").trim();
+            }
+          }
+        }
+
+        const suggestions = (donePayload?.suggestions || []).filter(
+          (s: any) => typeof s === "string" && s.trim()
+        ) as string[];
+        const finalSuggestions =
+          suggestions.length > 0
+            ? suggestions
+            : streamedText.trim()
+              ? [streamedText.trim()]
+              : undefined;
+        if (!finalSuggestions?.length) {
+          const { data } = await api.post<{
+            suggestion?: string;
+            suggestions?: string[];
+            replaceRange?: { from: number; to: number };
+          }>("/ai/inline-suggest", payload);
+          const recovered = (data?.suggestions || [])
+            .filter((s) => typeof s === "string")
+            .map((s) => s.trim())
+            .filter(Boolean);
+          const merged = recovered.length
+            ? recovered
+            : [String(data?.suggestion || "").trim()].filter(Boolean);
+          if (!merged.length) {
+            setInlineSuggestion(null);
+            notifications.show({
+              message: streamError || "No suggestion returned",
+              color: "yellow",
+            });
+          } else {
+            setInlineSuggestion((prev) => {
+              if (!prev) return prev;
+              return {
+                ...prev,
+                suggestions: merged,
+                activeIndex: 0,
+                replaceRange: data?.replaceRange || donePayload?.replaceRange || replaceRange,
+                streaming: false,
+              };
+            });
+          }
+        } else {
+          setInlineSuggestion((prev) => {
+            if (!prev) return prev;
+            return {
+              ...prev,
+              suggestions: finalSuggestions,
+              activeIndex: 0,
+              replaceRange: donePayload?.replaceRange || replaceRange,
+              streaming: false,
+            };
+          });
+        }
       } catch (error) {
+        if ((error as any)?.name === "AbortError") return;
         console.error("Failed to fetch inline suggestion", error);
+        setInlineSuggestion(null);
         notifications.show({
-          message: "Failed to fetch inline suggestion",
+          message:
+            (error as any)?.response?.data?.error ||
+            (error as any)?.response?.data?.details ||
+            "Failed to fetch inline suggestion",
           color: "red",
         });
       } finally {
+        if (inlineStreamAbortRef.current === ctrl) {
+          inlineStreamAbortRef.current = null;
+        }
         setRequestingSuggestion(false);
       }
     },
@@ -194,7 +326,10 @@ export default function EditorPro({
   const acceptInlineSuggestion = useCallback(() => {
     const ed = editorRef.current;
     if (!ed || !inlineSuggestion) return;
-    const { suggestion, replaceRange } = inlineSuggestion;
+    const suggestion =
+      inlineSuggestion.suggestions[inlineSuggestion.activeIndex] || "";
+    if (!suggestion.trim()) return;
+    const { replaceRange } = inlineSuggestion;
     ed
       .chain()
       .focus()
@@ -204,7 +339,17 @@ export default function EditorPro({
   }, [inlineSuggestion]);
 
   const rejectInlineSuggestion = useCallback(() => {
+    inlineStreamAbortRef.current?.abort();
     setInlineSuggestion(null);
+  }, []);
+
+  const cycleInlineSuggestion = useCallback((delta: number) => {
+    setInlineSuggestion((prev) => {
+      if (!prev || prev.suggestions.length <= 1) return prev;
+      const total = prev.suggestions.length;
+      const next = (prev.activeIndex + delta + total) % total;
+      return { ...prev, activeIndex: next };
+    });
   }, []);
 
   useEffect(() => {
@@ -222,6 +367,10 @@ export default function EditorPro({
   useEffect(() => {
     rejectInlineSuggestionRef.current = rejectInlineSuggestion;
   }, [rejectInlineSuggestion]);
+
+  useEffect(() => {
+    cycleInlineSuggestionRef.current = cycleInlineSuggestion;
+  }, [cycleInlineSuggestion]);
 
   useEffect(() => {
     popoverOpenRef.current = popoverOpen;
@@ -325,8 +474,10 @@ export default function EditorPro({
       InlineGhostText.configure({
         getSuggestion: () => {
           const current = inlineSuggestionRef.current;
-          if (!current?.suggestion) return null;
-          return { text: current.suggestion, at: current.replaceRange.to };
+          if (!current) return null;
+          const text = current.suggestions[current.activeIndex] || "";
+          if (!text) return null;
+          return { text, at: current.replaceRange.to };
         },
       }),
       WikiLinkDecoration.configure({
@@ -376,6 +527,16 @@ export default function EditorPro({
         }
 
         if (inlineSuggestionRef.current) {
+          if (event.altKey && event.key === "[") {
+            event.preventDefault();
+            cycleInlineSuggestionRef.current?.(-1);
+            return true;
+          }
+          if (event.altKey && event.key === "]") {
+            event.preventDefault();
+            cycleInlineSuggestionRef.current?.(1);
+            return true;
+          }
           if (event.key === "Tab") {
             event.preventDefault();
             acceptInlineSuggestionRef.current?.();
@@ -456,6 +617,14 @@ export default function EditorPro({
   }, [editor, inlineSuggestion]);
 
   useEffect(() => {
+    if (!editor || !inlineSuggestion) {
+      setInlineControlsPos(null);
+      return;
+    }
+    setInlineControlsPos(getPopoverAnchorFromPos(inlineSuggestion.replaceRange.to));
+  }, [editor, getPopoverAnchorFromPos, inlineSuggestion]);
+
+  useEffect(() => {
     if (!editor || !inlineSuggestion) return;
     const onSelectionUpdate = () => {
       const { from, to } = editor.state.selection;
@@ -477,6 +646,12 @@ export default function EditorPro({
       editor.view.state.tr.setMeta(WIKI_LINK_REFRESH_META, true)
     );
   }, [editor, resolveWikiLink]);
+
+  useEffect(() => {
+    return () => {
+      inlineStreamAbortRef.current?.abort();
+    };
+  }, []);
 
   const insertPageLink = useCallback(async () => {
     if (!editor) return;
@@ -697,6 +872,65 @@ export default function EditorPro({
               }}
             />
             <EditorContent editor={editor} />
+            {inlineSuggestion && inlineControlsPos && (
+              <div
+                style={{
+                  position: "absolute",
+                  left: inlineControlsPos.x,
+                  top: inlineControlsPos.y + 22,
+                  zIndex: 30,
+                }}>
+                <Paper
+                  withBorder
+                  shadow="sm"
+                  radius="md"
+                  p={6}>
+                  <Group gap={6}>
+                    <Button
+                      size="compact-xs"
+                      variant="light"
+                      onClick={acceptInlineSuggestion}>
+                      Accept
+                    </Button>
+                    <Button
+                      size="compact-xs"
+                      variant="default"
+                      onClick={rejectInlineSuggestion}>
+                      Reject
+                    </Button>
+                    <Button
+                      size="compact-xs"
+                      variant="subtle"
+                      loading={requestingSuggestion}
+                      onClick={() => void requestInlineSuggestion(inlineSuggestion.mode)}>
+                      Regenerate
+                    </Button>
+                    <Button
+                      size="compact-xs"
+                      variant="default"
+                      disabled={inlineSuggestion.suggestions.length <= 1}
+                      onClick={() => cycleInlineSuggestion(-1)}>
+                      Prev
+                    </Button>
+                    <Text size="xs" c="dimmed">
+                      {inlineSuggestion.activeIndex + 1}/{inlineSuggestion.suggestions.length}
+                    </Text>
+                    <Button
+                      size="compact-xs"
+                      variant="default"
+                      disabled={inlineSuggestion.suggestions.length <= 1}
+                      onClick={() => cycleInlineSuggestion(1)}>
+                      Next
+                    </Button>
+                    {inlineSuggestion.streaming && (
+                      <Text size="xs" c="dimmed">
+                        streaming...
+                      </Text>
+                    )}
+                  </Group>
+                </Paper>
+              </div>
+            )}
             <Popover
               opened={popoverOpen}
               withinPortal={false}
