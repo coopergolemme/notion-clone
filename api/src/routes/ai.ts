@@ -15,6 +15,237 @@ function toKebab(s: string) {
     .replace(/^-+|-+$/g, "");
 }
 
+function decodeHtmlEntities(input: string): string {
+  return input
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&nbsp;/g, " ");
+}
+
+function stripHtml(input: string): string {
+  return input
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function extractLatexSnippets(html: string): string[] {
+  const snippets: string[] = [];
+  const attrRegex = /data-latex="([^"]+)"/g;
+  let match: RegExpExecArray | null;
+  while ((match = attrRegex.exec(html))) {
+    const raw = decodeHtmlEntities(match[1] || "").trim();
+    if (raw) snippets.push(raw);
+  }
+
+  // fallback for raw $...$ or $$...$$ content
+  const blockRegex = /\$\$([\s\S]+?)\$\$/g;
+  while ((match = blockRegex.exec(html))) {
+    const raw = (match[1] || "").trim();
+    if (raw) snippets.push(raw);
+  }
+  const inlineRegex = /(^|[^$])\$([^\n$]+?)\$/g;
+  while ((match = inlineRegex.exec(html))) {
+    const raw = (match[2] || "").trim();
+    if (raw) snippets.push(raw);
+  }
+
+  return snippets;
+}
+
+function extractLatexTokens(snippets: string[], limit = 24): string[] {
+  const counts = new Map<string, number>();
+  for (const snip of snippets) {
+    const commands = snip.match(/\\[a-zA-Z]+/g) || [];
+    const symbols = snip.match(/[a-zA-Z]\w*/g) || [];
+    for (const cmd of commands) {
+      counts.set(cmd, (counts.get(cmd) || 0) + 2);
+    }
+    for (const sym of symbols) {
+      if (sym.length <= 1) continue;
+      counts.set(sym, (counts.get(sym) || 0) + 1);
+    }
+  }
+
+  return Array.from(counts.entries())
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, limit)
+    .map(([token]) => token);
+}
+
+function extractKeywords(texts: string[], limit = 20): string[] {
+  const counts = new Map<string, number>();
+  for (const text of texts) {
+    const keywords = keywordExtractor.extract(text, {
+      language: "english",
+      remove_digits: true,
+      return_changed_case: true,
+      remove_duplicates: false,
+    });
+    for (const k of keywords) {
+      if (k.length < 3) continue;
+      counts.set(k, (counts.get(k) || 0) + 1);
+    }
+  }
+
+  return Array.from(counts.entries())
+    .sort((a, b) => b[1] - a[1] || a[0].length - b[0].length)
+    .slice(0, limit)
+    .map(([token]) => token);
+}
+
+async function buildLatexContext({
+  prompt,
+  pageId,
+}: {
+  prompt: string;
+  pageId?: string;
+}) {
+  const pages: { id: string; title: string; content: string }[] = [];
+  const seen = new Set<string>();
+
+  const addPage = (row: { id: string; title: string; content: string }) => {
+    if (!row?.id || seen.has(row.id)) return;
+    if (pageId && row.id === pageId) return;
+    seen.add(row.id);
+    pages.push(row);
+  };
+
+  try {
+    const vec = await embed(prompt);
+    const pgVec = toPgVector(vec);
+    if (pgVec) {
+      const similar = await query<{ id: string; title: string; content: string }>(
+        `
+          select id, title, content
+          from page
+          order by embedding <=> $1::vector
+          limit 5
+        `,
+        [pgVec]
+      );
+      similar.rows.forEach(addPage);
+    }
+  } catch {
+    // ignore embedding failures
+  }
+
+  const recent = await query<{ id: string; title: string; content: string }>(
+    `
+      select id, title, content
+      from page
+      order by updated_at desc nulls last, created_at desc
+      limit 6
+    `
+  );
+  recent.rows.forEach(addPage);
+
+  if (!pages.length) return "";
+
+  const snippets: string[] = [];
+  for (const p of pages) {
+    snippets.push(...extractLatexSnippets(p.content));
+  }
+  const tokens = extractLatexTokens(snippets, 18);
+
+  const noteSummaries = pages.slice(0, 4).map((p) => {
+    const text = stripHtml(p.content).slice(0, 220);
+    return `- ${p.title}: ${text}`;
+  });
+
+  const lines = [
+    "Relevant note context:",
+    ...noteSummaries,
+  ];
+  if (tokens.length) {
+    lines.push("", "Common symbols/commands used in your notes:");
+    lines.push(tokens.map((t) => `\`${t}\``).join(", "));
+  }
+
+  return lines.join("\n");
+}
+
+async function buildWritingContext({
+  prompt,
+  pageId,
+}: {
+  prompt: string;
+  pageId?: string;
+}) {
+  const pages: { id: string; title: string; content: string }[] = [];
+  const seen = new Set<string>();
+
+  const addPage = (row: { id: string; title: string; content: string }) => {
+    if (!row?.id || seen.has(row.id)) return;
+    if (pageId && row.id === pageId) return;
+    seen.add(row.id);
+    pages.push(row);
+  };
+
+  try {
+    const vec = await embed(prompt);
+    const pgVec = toPgVector(vec);
+    if (pgVec) {
+      const similar = await query<{ id: string; title: string; content: string }>(
+        `
+          select id, title, content
+          from page
+          order by embedding <=> $1::vector
+          limit 5
+        `,
+        [pgVec]
+      );
+      similar.rows.forEach(addPage);
+    }
+  } catch {
+    // ignore embedding failures
+  }
+
+  const recent = await query<{ id: string; title: string; content: string }>(
+    `
+      select id, title, content
+      from page
+      order by updated_at desc nulls last, created_at desc
+      limit 6
+    `
+  );
+  recent.rows.forEach(addPage);
+
+  if (!pages.length) return "";
+
+  const textSnippets: string[] = [];
+  const latexSnippets: string[] = [];
+  for (const p of pages) {
+    textSnippets.push(stripHtml(p.content).slice(0, 600));
+    latexSnippets.push(...extractLatexSnippets(p.content));
+  }
+
+  const keywords = extractKeywords(textSnippets, 16);
+  const latexTokens = extractLatexTokens(latexSnippets, 12);
+
+  const noteSummaries = pages.slice(0, 4).map((p) => {
+    const text = stripHtml(p.content).slice(0, 220);
+    return `- ${p.title}: ${text}`;
+  });
+
+  const lines = ["Relevant note context:", ...noteSummaries];
+  if (keywords.length) {
+    lines.push("", "Common terms used in your notes:");
+    lines.push(keywords.map((t) => `\`${t}\``).join(", "));
+  }
+  if (latexTokens.length) {
+    lines.push("", "Common symbols/commands used in your notes:");
+    lines.push(latexTokens.map((t) => `\`${t}\``).join(", "));
+  }
+
+  return lines.join("\n");
+}
+
 export function registerAIRoutes(app: FastifyInstance) {
   const InlineSuggestInput = z.object({
     pageId: z.string().uuid().optional(),
@@ -57,11 +288,13 @@ export function registerAIRoutes(app: FastifyInstance) {
       }
     }
 
+    const contextualNotes = await buildLatexContext({ prompt, pageId });
+
     const system = [
       "You are a LaTeX equation generator.",
       "Output only valid LaTeX expression text.",
       "Do not include markdown code fences.",
-      "Do not include dollar signs.",
+      "Do not include dollar signs or math delimiters like \\( \\), \\[ \\], or $$.",
       displayMode
         ? "Generate for display math (block equation)."
         : "Generate for inline math.",
@@ -69,6 +302,7 @@ export function registerAIRoutes(app: FastifyInstance) {
     const user = [
       `Plain English request: ${prompt}`,
       pageContext,
+      contextualNotes,
       "Return only LaTeX.",
     ]
       .filter(Boolean)
@@ -393,10 +627,6 @@ export function registerAIRoutes(app: FastifyInstance) {
   });
 }
 
-function stripHtml(input: string) {
-  return input.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
-}
-
 function cleanInlineSuggestion(
   raw: string | null,
   mode: "continue" | "rewrite" | "fix" | "summarize" | "explain",
@@ -444,6 +674,11 @@ async function buildInlineSuggestContext({
     }
   }
 
+  const contextualNotes = await buildWritingContext({
+    prompt: [selectionText, cursorBefore, cursorAfter].filter(Boolean).join("\n"),
+    pageId,
+  });
+
   const taskByMode: Record<typeof mode, string> = {
     continue:
       "Continue the draft naturally from the cursor position using the same voice. Do not repeat the text before the cursor. Return only the next continuation text.",
@@ -468,6 +703,7 @@ async function buildInlineSuggestContext({
     `Text before cursor:\n${cursorBefore}`,
     `Text after cursor:\n${cursorAfter}`,
     pageContext,
+    contextualNotes,
     mode === "continue"
       ? "Write only what should be inserted at the cursor as a continuation."
       : "",
@@ -522,6 +758,10 @@ function cleanLatexCandidate(raw: string | null) {
     .trim()
     .replace(/^\$+\s*/, "")
     .replace(/\s*\$+$/, "")
+    .replace(/^\\\[\s*/, "")
+    .replace(/\s*\\\]$/, "")
+    .replace(/^\\\(\s*/, "")
+    .replace(/\s*\\\)$/, "")
     .trim();
   return cleaned;
 }
