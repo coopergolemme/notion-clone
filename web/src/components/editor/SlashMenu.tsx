@@ -1,7 +1,6 @@
 import { useMemo, useState, useEffect, useCallback } from "react";
 import { FloatingMenu, Editor } from "@tiptap/react";
 import { Card, Stack, Text } from "@mantine/core";
-import { insertInlineMath, insertBlockMath } from "./MathExtensions";
 
 type SlashItem = {
   key: string;
@@ -20,11 +19,21 @@ const LOOK_BACK = 120;
 export default function SlashMenu({
   editor,
   onInsertPageLink,
+  onInlineSuggestion,
+  onInsertEquationFromEnglish,
+  onInsertInlineMath,
+  onInsertBlockMath,
   onRemoveTrigger,
   onControlsChange,
 }: {
   editor: Editor;
   onInsertPageLink: () => void | Promise<void>;
+  onInlineSuggestion: (
+    mode: "continue" | "rewrite" | "fix" | "summarize" | "explain"
+  ) => void | Promise<void>;
+  onInsertEquationFromEnglish: () => void | Promise<void>;
+  onInsertInlineMath: () => void | Promise<void>;
+  onInsertBlockMath: () => void | Promise<void>;
   onRemoveTrigger: () => void;
   onControlsChange: (controls: SlashControls) => void;
 }) {
@@ -91,15 +100,46 @@ export default function SlashMenu({
       {
         key: "math-inline",
         label: "Inline math ($…$)",
-        run: (e) => insertInlineMath(e),
+        run: () => onInsertInlineMath(),
       },
       {
         key: "math-block",
         label: "Block math ($$…$$)",
-        run: (e) => insertBlockMath(e),
+        run: () => onInsertBlockMath(),
+      },
+      {
+        key: "ai-continue",
+        label: "AI: Continue writing",
+        run: () => onInlineSuggestion("continue"),
+      },
+      {
+        key: "ai-rewrite",
+        label: "AI: Rewrite selection",
+        run: () => onInlineSuggestion("rewrite"),
+      },
+      {
+        key: "ai-fix",
+        label: "AI: Fix grammar",
+        run: () => onInlineSuggestion("fix"),
+      },
+      {
+        key: "ai-explain",
+        label: "AI: Explain selection",
+        run: () => onInlineSuggestion("explain"),
+      },
+      {
+        key: "ai-equation",
+        label: "AI: Equation from English",
+        run: () => onInsertEquationFromEnglish(),
       },
     ],
-    [onInsertPageLink]
+    [
+      onInsertPageLink,
+      onInlineSuggestion,
+      onInsertEquationFromEnglish,
+      onInsertInlineMath,
+      onInsertBlockMath,
+    ]
   );
 
   const [menuState, setMenuState] = useState<{ open: boolean; query: string }>({

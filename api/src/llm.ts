@@ -23,3 +23,45 @@ export async function genText(
     return null;
   }
 }
+
+/**
+ * Stream token chunks from Gemini. Calls onToken for each emitted fragment.
+ * Returns final concatenated text, or null on failure.
+ */
+export async function genTextStream(
+  system: string,
+  user: string,
+  onToken: (token: string) => void | Promise<void>
+): Promise<string | null> {
+  try {
+    const model = getGenerationModel();
+    const prompt = `System:\n${system}\n\nUser:\n${user}\n\nAssistant:`;
+    const result: any = await (model as any).generateContentStream(prompt);
+
+    let full = "";
+    for await (const chunk of result.stream as AsyncIterable<any>) {
+      const piece =
+        (chunk?.text?.() as string | undefined) ??
+        chunk?.candidates?.[0]?.content?.parts
+          ?.map((p: any) => p?.text || "")
+          .join("");
+      if (!piece) continue;
+      full += piece;
+      await onToken(piece);
+    }
+
+    if (!full?.trim()) {
+      const fallback =
+        (result?.response as any)?.text?.() ??
+        (await (result as any)?.response?.text?.());
+      if (typeof fallback === "string" && fallback.trim()) {
+        full = fallback.trim();
+      }
+    }
+
+    return full?.trim() ? full.trim() : null;
+  } catch (e: any) {
+    console.warn("[genTextStream] Gemini error:", e?.message || e);
+    return null;
+  }
+}

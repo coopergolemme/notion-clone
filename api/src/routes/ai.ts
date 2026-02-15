@@ -3,6 +3,8 @@ import { FastifyInstance } from "fastify";
 import { query } from "../db.js";
 import { embed } from "../embeddings.js";
 import { toPgVector } from "../pgvector.js";
+import { genText } from "../llm.js";
+import katex from "katex";
 import { z } from "zod";
 
 function toKebab(s: string) {
@@ -14,6 +16,165 @@ function toKebab(s: string) {
 }
 
 export function registerAIRoutes(app: FastifyInstance) {
+  app.post("/ai/latex-from-text", async (req, reply) => {
+    const LatexFromTextInput = z.object({
+      prompt: z.string().min(3),
+      displayMode: z.boolean().optional().default(false),
+      pageId: z.string().uuid().optional(),
+    });
+
+    const { prompt, displayMode, pageId } = LatexFromTextInput.parse(
+      req.body ?? {}
+    );
+
+    let pageContext = "";
+    if (pageId) {
+      const p = await query<{ title: string }>(
+        "select title from page where id=$1 limit 1",
+        [pageId]
+      );
+      if (p.rows.length) {
+        pageContext = `Current page title: ${p.rows[0].title}`;
+      }
+    }
+
+    const system = [
+      "You are a LaTeX equation generator.",
+      "Output only valid LaTeX expression text.",
+      "Do not include markdown code fences.",
+      "Do not include dollar signs.",
+      displayMode
+        ? "Generate for display math (block equation)."
+        : "Generate for inline math.",
+    ].join(" ");
+    const user = [
+      `Plain English request: ${prompt}`,
+      pageContext,
+      "Return only LaTeX.",
+    ]
+      .filter(Boolean)
+      .join("\n\n");
+
+    let latex = cleanLatexCandidate(await genText(system, user));
+
+    const firstValidation = validateLatex(latex, displayMode);
+    if (!firstValidation.ok) {
+      const repairPrompt = [
+        "Fix this LaTeX so it parses with KaTeX.",
+        `Error: ${firstValidation.error}`,
+        `LaTeX: ${latex}`,
+        "Return only repaired LaTeX, without markdown fences or dollar signs.",
+      ].join("\n");
+      latex = cleanLatexCandidate(await genText(system, repairPrompt));
+    }
+
+    const finalValidation = validateLatex(latex, displayMode);
+    if (!finalValidation.ok) {
+      return reply.code(422).send({
+        error: "Unable to generate valid LaTeX",
+        details: finalValidation.error,
+      });
+    }
+
+    return {
+      latex,
+      kind: displayMode ? "block" : "inline",
+      valid: true,
+    };
+  });
+
+  app.post("/ai/inline-suggest", async (req, reply) => {
+    const InlineSuggestInput = z.object({
+      pageId: z.string().uuid().optional(),
+      selectionText: z.string().default(""),
+      cursorBefore: z.string().default(""),
+      cursorAfter: z.string().default(""),
+      mode: z
+        .enum(["continue", "rewrite", "fix", "summarize", "explain"])
+        .default("continue"),
+      tone: z.string().default("neutral"),
+      maxTokens: z.number().int().min(32).max(512).default(180),
+      replaceRange: z
+        .object({
+          from: z.number().int().min(0),
+          to: z.number().int().min(0),
+        })
+        .optional(),
+    });
+
+    const parsed = InlineSuggestInput.parse(req.body ?? {});
+    const {
+      pageId,
+      selectionText,
+      cursorBefore,
+      cursorAfter,
+      mode,
+      tone,
+      maxTokens,
+      replaceRange,
+    } = parsed;
+
+    let pageContext = "";
+    if (pageId) {
+      const p = await query<{ title: string; content: string }>(
+        "select title, content from page where id=$1 limit 1",
+        [pageId]
+      );
+      if (p.rows.length) {
+        const { title, content } = p.rows[0];
+        pageContext = `Page title: ${title}\nPage content (excerpt): ${stripHtml(
+          content
+        ).slice(0, 2000)}`;
+      }
+    }
+
+    const taskByMode: Record<typeof mode, string> = {
+      continue:
+        "Continue the draft naturally from the cursor position using the same voice.",
+      rewrite:
+        "Rewrite the selected text for clarity while preserving meaning.",
+      fix: "Fix grammar, spelling, punctuation, and awkward phrasing.",
+      summarize: "Summarize the selected text into a concise version.",
+      explain: "Explain the selected text clearly in simpler language.",
+    };
+
+    const system = [
+      "You are an inline writing assistant for a notes app.",
+      "Return plain text only. No markdown fences. No surrounding quotes.",
+      "Keep the suggestion concise and directly usable in the document.",
+      `Target tone: ${tone}.`,
+      `Maximum length: about ${Math.max(20, Math.floor(maxTokens * 0.75))} words.`,
+    ].join(" ");
+
+    const user = [
+      `Task: ${taskByMode[mode]}`,
+      selectionText
+        ? `Selected text:\n${selectionText}`
+        : "Selected text: (none)",
+      `Text before cursor:\n${cursorBefore}`,
+      `Text after cursor:\n${cursorAfter}`,
+      pageContext,
+      "Return only the suggested replacement/continuation text.",
+    ]
+      .filter(Boolean)
+      .join("\n\n");
+
+    const raw = await genText(system, user);
+    const suggestion = cleanInlineSuggestion(raw, mode, selectionText);
+
+    return {
+      suggestion,
+      replaceRange:
+        replaceRange ??
+        (() => {
+          const len = selectionText.length;
+          return { from: 0, to: len };
+        })(),
+      confidence: suggestion ? 0.82 : 0.24,
+      citations: pageId ? [{ type: "page", id: pageId }] : [],
+    };
+  });
+
   // RELATED by cosine distance
   app.post("/ai/related", async (req, reply) => {
     const { pageId, k } = (req.body as any) ?? {};
@@ -154,4 +315,50 @@ export function registerAIRoutes(app: FastifyInstance) {
 
     return { tags: suggestions };
   });
+}
+
+function stripHtml(input: string) {
+  return input.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function cleanInlineSuggestion(
+  raw: string | null,
+  mode: "continue" | "rewrite" | "fix" | "summarize" | "explain",
+  selectionText: string
+) {
+  if (raw && typeof raw === "string") {
+    const cleaned = raw
+      .replace(/^```[\w-]*\n?/g, "")
+      .replace(/```$/g, "")
+      .replace(/^["']+|["']+$/g, "")
+      .trim();
+    if (cleaned) return cleaned;
+  }
+  if (mode === "continue") return "Continue the paragraph with a specific point.";
+  return selectionText || "";
+}
+
+function cleanLatexCandidate(raw: string | null) {
+  const cleaned = String(raw || "")
+    .replace(/^```[\w-]*\n?/g, "")
+    .replace(/```$/g, "")
+    .trim()
+    .replace(/^\$+\s*/, "")
+    .replace(/\s*\$+$/, "")
+    .trim();
+  return cleaned;
+}
+
+function validateLatex(latex: string, displayMode: boolean) {
+  if (!latex) return { ok: false as const, error: "empty latex" };
+  try {
+    katex.renderToString(latex, {
+      displayMode,
+      throwOnError: true,
+      strict: "error",
+    });
+    return { ok: true as const };
+  } catch (e: any) {
+    return { ok: false as const, error: e?.message || "invalid latex" };
+  }
 }

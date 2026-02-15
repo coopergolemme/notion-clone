@@ -42,3 +42,12 @@
   color: var(--mantine-color-blue-9, #1d4ed8);
   outline: none;
 }
+
+.tiptap .inline-ghost-text {
+  display: inline;
+  color: rgba(100, 116, 139, 0.62);
+  font-style: italic;
+  pointer-events: none;
+  user-select: none;
+  white-space: pre-wrap;
+}

@@ -129,6 +129,7 @@ export default function PageView() {
     <Stack>
       <EditorPro
         value={page.content}
+        pageId={id}
         onChange={(html) => {
           const format = page.format === "latex" ? "latex" : "rich";
           const derivedTitle = deriveTitleFromContent(html, format);
