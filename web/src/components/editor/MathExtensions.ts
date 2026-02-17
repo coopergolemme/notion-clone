@@ -1,6 +1,8 @@
 import { Node, mergeAttributes } from "@tiptap/core";
+import { Editor } from "@tiptap/react";
 import Mathematics from "@tiptap/extension-mathematics";
 import katex from "katex";
+import { openMathModal } from "./MathModal";
 
 // Use the official TipTap math extension
 export const MathExtension = Mathematics.configure({
@@ -163,32 +165,58 @@ export const MathBlock = Node.create({
 });
 
 // Helper functions
-export function insertInlineMath(editor: any) {
-  const latex = prompt("Enter LaTeX formula:") || "";
-  if (!latex) return;
+export function insertInlineMath(editor: Editor) {
+  const isEditing = editor.isActive("math_inline");
+  const initialLatex = isEditing
+    ? (editor.getAttributes("math_inline").latex as string) || ""
+    : "";
 
-  editor
-    .chain()
-    .focus()
-    .insertContent({
-      type: "math_inline",
-      attrs: { latex },
-    })
-    .run();
+  openMathModal({
+    initialValue: initialLatex,
+    displayMode: false,
+    submitLabel: isEditing ? "Update" : "Insert",
+    title: isEditing ? "Edit inline math" : "Insert inline math",
+    onSubmit: (latex) => {
+      const chain = editor.chain().focus();
+      if (isEditing) {
+        chain.updateAttributes("math_inline", { latex }).run();
+      } else {
+        chain
+          .insertContent({
+            type: "math_inline",
+            attrs: { latex },
+          })
+          .run();
+      }
+    },
+  });
 }
 
-export function insertBlockMath(editor: any) {
-  const latex = prompt("Enter LaTeX formula:") || "";
-  if (!latex) return;
+export function insertBlockMath(editor: Editor) {
+  const isEditing = editor.isActive("math_display");
+  const initialLatex = isEditing
+    ? (editor.getAttributes("math_display").latex as string) || ""
+    : "";
 
-  editor
-    .chain()
-    .focus()
-    .insertContent({
-      type: "math_display",
-      attrs: { latex },
-    })
-    .run();
+  openMathModal({
+    initialValue: initialLatex,
+    displayMode: true,
+    submitLabel: isEditing ? "Update" : "Insert",
+    title: isEditing ? "Edit block math" : "Insert block math",
+    onSubmit: (latex) => {
+      const chain = editor.chain().focus();
+      if (isEditing) {
+        chain.updateAttributes("math_display", { latex }).run();
+      } else {
+        chain
+          .insertContent({
+            type: "math_display",
+            attrs: { latex },
+          })
+          .run();
+      }
+    },
+  });
 }
 
 export function parseLaTeXContent(text: string) {
