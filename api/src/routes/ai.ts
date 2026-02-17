@@ -289,7 +289,7 @@ export function registerAIRoutes(app: FastifyInstance) {
     }
 
     const contextualNotes = await buildLatexContext({ prompt, pageId });
-
+    
     const system = [
       "You are a LaTeX equation generator.",
       "Output only valid LaTeX expression text.",

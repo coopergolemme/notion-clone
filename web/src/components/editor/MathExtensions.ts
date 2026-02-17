@@ -22,10 +22,10 @@ export const MathInline = Node.create({
     return {
       latex: {
         default: "",
-        parseHTML: (element) => element.getAttribute("data-latex") || "",
+        parseHTML: (element) => element.getAttribute("data-latex"),
         renderHTML: (attributes) => {
           return {
-            "data-latex": attributes.latex || "",
+            "data-latex": attributes.latex,
           }
         },
       },
@@ -36,22 +36,17 @@ export const MathInline = Node.create({
     return [
       {
         tag: 'span[data-type="math-inline"]',
-        getAttrs: (element) => {
-          const latex = (element as HTMLElement).getAttribute("data-latex");
-          return { latex: latex || "" };
-        },
       },
     ];
   },
 
-  renderHTML({ HTMLAttributes }) {
+  renderHTML({ node, HTMLAttributes }) {
     return [
       "span",
       mergeAttributes(HTMLAttributes, {
         "data-type": "math-inline",
-        "data-latex": HTMLAttributes.latex || "",
       }),
-      HTMLAttributes.latex || "",
+      node.attrs.latex,
     ];
   },
 
@@ -103,10 +98,10 @@ export const MathBlock = Node.create({
     return {
       latex: {
         default: "",
-        parseHTML: (element) => element.getAttribute("data-latex") || "",
+        parseHTML: (element) => element.getAttribute("data-latex"),
         renderHTML: (attributes) => {
           return {
-            "data-latex": attributes.latex || "",
+            "data-latex": attributes.latex,
           }
         },
       },
@@ -117,22 +112,17 @@ export const MathBlock = Node.create({
     return [
       {
         tag: 'div[data-type="math-display"]',
-        getAttrs: (element) => {
-          const latex = (element as HTMLElement).getAttribute("data-latex");
-          return { latex: latex || "" };
-        },
       },
     ];
   },
 
-  renderHTML({ HTMLAttributes }) {
+  renderHTML({ node, HTMLAttributes }) {
     return [
       "div",
       mergeAttributes(HTMLAttributes, {
         "data-type": "math-display",
-        "data-latex": HTMLAttributes.latex || "",
       }),
-      HTMLAttributes.latex || "",
+      node.attrs.latex,
     ];
   },
 
