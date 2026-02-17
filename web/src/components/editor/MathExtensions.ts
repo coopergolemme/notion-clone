@@ -4,9 +4,6 @@ import katex from "katex";
 
 // Use the official TipTap math extension
 export const MathExtension = Mathematics.configure({
-  HTMLAttributes: {
-    class: "math-node",
-  },
   katexOptions: {
     throwOnError: false,
     displayMode: false,
@@ -25,6 +22,12 @@ export const MathInline = Node.create({
     return {
       latex: {
         default: "",
+        parseHTML: (element) => element.getAttribute("data-latex") || "",
+        renderHTML: (attributes) => {
+          return {
+            "data-latex": attributes.latex || "",
+          }
+        },
       },
     };
   },
@@ -33,9 +36,10 @@ export const MathInline = Node.create({
     return [
       {
         tag: 'span[data-type="math-inline"]',
-        getAttrs: (element) => ({
-          latex: (element as HTMLElement).getAttribute("data-latex"),
-        }),
+        getAttrs: (element) => {
+          const latex = (element as HTMLElement).getAttribute("data-latex");
+          return { latex: latex || "" };
+        },
       },
     ];
   },
@@ -45,9 +49,9 @@ export const MathInline = Node.create({
       "span",
       mergeAttributes(HTMLAttributes, {
         "data-type": "math-inline",
-        "data-latex": HTMLAttributes.latex,
+        "data-latex": HTMLAttributes.latex || "",
       }),
-      HTMLAttributes.latex,
+      HTMLAttributes.latex || "",
     ];
   },
 
@@ -99,6 +103,12 @@ export const MathBlock = Node.create({
     return {
       latex: {
         default: "",
+        parseHTML: (element) => element.getAttribute("data-latex") || "",
+        renderHTML: (attributes) => {
+          return {
+            "data-latex": attributes.latex || "",
+          }
+        },
       },
     };
   },
@@ -107,9 +117,10 @@ export const MathBlock = Node.create({
     return [
       {
         tag: 'div[data-type="math-display"]',
-        getAttrs: (element) => ({
-          latex: (element as HTMLElement).getAttribute("data-latex"),
-        }),
+        getAttrs: (element) => {
+          const latex = (element as HTMLElement).getAttribute("data-latex");
+          return { latex: latex || "" };
+        },
       },
     ];
   },
@@ -119,9 +130,9 @@ export const MathBlock = Node.create({
       "div",
       mergeAttributes(HTMLAttributes, {
         "data-type": "math-display",
-        "data-latex": HTMLAttributes.latex,
+        "data-latex": HTMLAttributes.latex || "",
       }),
-      HTMLAttributes.latex,
+      HTMLAttributes.latex || "",
     ];
   },
 

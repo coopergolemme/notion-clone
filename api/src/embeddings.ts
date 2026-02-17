@@ -1,5 +1,5 @@
 // api/src/embeddings.ts
-import { getEmbeddingModel } from "./gemini.js";
+import { EMBEDDING_MODEL, models } from "./gemini.js";
 
 /**
  * Returns a normalized 768-dim embedding using Gemini text-embedding-004.
@@ -7,9 +7,8 @@ import { getEmbeddingModel } from "./gemini.js";
  */
 export async function embed(text: string): Promise<number[] | null> {
   try {
-    const model = getEmbeddingModel();
     // Gemini SDK: embedContent accepts plain text; returns .embedding.values
-    const res: any = await (model as any).embedContent(text);
+    const res: any = await models.embedContent({model: EMBEDDING_MODEL, contents: text});
     const values: number[] | undefined = res?.embedding?.values;
     if (!values || !Array.isArray(values) || values.length === 0) return null;
 

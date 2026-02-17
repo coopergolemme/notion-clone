@@ -1,5 +1,5 @@
 // api/src/llm.ts
-import { getGenerationModel } from "./gemini.js";
+import { GENERATION_MODEL, models } from "./gemini.js";
 import fetch from "node-fetch";
 
 const LLM_PROVIDER = (process.env.LLM_PROVIDER || "gemini").toLowerCase();
@@ -24,10 +24,9 @@ export async function genText(
   }
 
   try {
-    const model = getGenerationModel();
     // We can emulate a "system" + "user" by concatenating with clear separators.
     const prompt = `System:\n${system}\n\nUser:\n${user}\n\nAssistant:`;
-    const res = await model.generateContent(prompt);
+    const res = await models.generateContent({model: GENERATION_MODEL, contents: prompt});
     const out =
       (res?.response as any)?.text?.() ??
       (await (res as any)?.response?.text());
