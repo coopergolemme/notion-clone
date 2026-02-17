@@ -190,3 +190,27 @@ export function insertBlockMath(editor: any) {
     })
     .run();
 }
+
+export function parseLaTeXContent(text: string) {
+  const parts = text.split(/(\$\$[\s\S]*?\$\$|\$[^$]*?\$)/g);
+  return parts.map((part) => {
+    if (part.startsWith("$$") && part.endsWith("$$")) {
+      const latex = part.slice(2, -2).trim();
+      return {
+        type: "math_display",
+        attrs: { latex },
+      };
+    }
+    if (part.startsWith("$") && part.endsWith("$")) {
+      const latex = part.slice(1, -1).trim();
+      return {
+        type: "math_inline",
+        attrs: { latex },
+      };
+    }
+    return {
+      type: "text",
+      text: part,
+    };
+  }).filter(n => n.type !== 'text' || n.text);
+}

@@ -84,9 +84,8 @@ export default function PageView() {
         pendingRef.current = null;
         setPending(null);
         notifications.show({
-          message: `Page "${
-            page?.title
-          }" saved at ${new Date().toLocaleTimeString()}`,
+          message: `Page "${page?.title
+            }" saved at ${new Date().toLocaleTimeString()}`,
           color: "green",
         });
       }

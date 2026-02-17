@@ -26,7 +26,7 @@ import { modals } from "@mantine/modals";
 import { notifications } from "@mantine/notifications";
 import SlashMenu, { type SlashControls } from "./SlashMenu";
 import Outline from "./Outline";
-import { MathInline, MathBlock } from "./MathExtensions";
+import { MathInline, MathBlock, parseLaTeXContent } from "./MathExtensions";
 import { MathInputRules } from "./MathInputRules";
 import {
   InlineGhostText,
@@ -74,8 +74,8 @@ export default function EditorPro({
 }: Props) {
   const slashControlsRef = useRef<SlashControls>({
     open: false,
-    move: () => {},
-    select: () => {},
+    move: () => { },
+    select: () => { },
   });
   const pagesCacheRef = useRef<PageSummary[]>(initialPages ?? []);
   const resolveRef = useRef<(title: string) => string | undefined>(
@@ -93,7 +93,7 @@ export default function EditorPro({
   } | null>(null);
   const inlineSuggestionRef = useRef<InlineSuggestion | null>(null);
   const requestInlineSuggestionRef = useRef<
-    ((mode?: InlineMode) => Promise<void>) | null
+    ((mode?: InlineMode, instruction?: string) => Promise<void>) | null
   >(null);
   const acceptInlineSuggestionRef = useRef<(() => void) | null>(null);
   const rejectInlineSuggestionRef = useRef<(() => void) | null>(null);
@@ -129,6 +129,10 @@ export default function EditorPro({
   );
   const [popoverSubmitting, setPopoverSubmitting] = useState(false);
 
+  const [aiCommandOpen, setAiCommandOpen] = useState(false);
+  const [aiCommandPrompt, setAiCommandPrompt] = useState("");
+  const aiCommandInputRef = useRef<HTMLTextAreaElement>(null);
+
   useEffect(() => {
     resolveRef.current = resolveWikiLink || (() => undefined);
   }, [resolveWikiLink]);
@@ -140,7 +144,7 @@ export default function EditorPro({
   }, [initialPages]);
 
   const requestInlineSuggestion = useCallback(
-    async (mode: InlineMode = "continue") => {
+    async (mode: InlineMode = "continue", instruction?: string) => {
       const ed = editorRef.current;
       if (!ed || requestingSuggestion) return;
       const { from, to } = ed.state.selection;
@@ -163,11 +167,12 @@ export default function EditorPro({
         mode,
         tone: "neutral",
         maxTokens: 180,
-        variants: 3,
+        variants: 1,
         selectionText,
         cursorBefore,
         cursorAfter,
         replaceRange,
+        instruction,
       };
 
       inlineStreamAbortRef.current?.abort();
@@ -205,9 +210,9 @@ export default function EditorPro({
         let streamError = "";
         let donePayload:
           | {
-              suggestions?: string[];
-              replaceRange?: { from: number; to: number };
-            }
+            suggestions?: string[];
+            replaceRange?: { from: number; to: number };
+          }
           | null = null;
 
         while (true) {
@@ -330,10 +335,11 @@ export default function EditorPro({
       inlineSuggestion.suggestions[inlineSuggestion.activeIndex] || "";
     if (!suggestion.trim()) return;
     const { replaceRange } = inlineSuggestion;
+    const content = parseLaTeXContent(suggestion + (replaceRange.from === replaceRange.to ? " " : ""));
     ed
       .chain()
       .focus()
-      .insertContentAt(replaceRange, suggestion + (replaceRange.from === replaceRange.to ? " " : ""))
+      .insertContentAt(replaceRange, content)
       .run();
     setInlineSuggestion(null);
   }, [inlineSuggestion]);
@@ -512,17 +518,26 @@ export default function EditorPro({
           return true;
         }
 
+        if (aiCommandOpen && event.key === "Escape") {
+          event.preventDefault();
+          setAiCommandOpen(false);
+          return true;
+        }
+
         if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "j") {
           event.preventDefault();
           if (event.shiftKey && inlineSuggestionRef.current) {
             void requestInlineSuggestionRef.current?.(inlineSuggestionRef.current.mode);
             return true;
           }
-          const mode: InlineMode =
-            editor.state.selection.from === editor.state.selection.to
-              ? "continue"
-              : "rewrite";
-          void requestInlineSuggestionRef.current?.(mode);
+
+          // Open AI Command Popover
+          const { from } = editor.state.selection;
+          const pos = getPopoverAnchorFromPos(from);
+          setPopoverPosition(pos);
+          setAiCommandOpen(true);
+          setAiCommandPrompt("");
+          setTimeout(() => aiCommandInputRef.current?.focus(), 50);
           return true;
         }
 
@@ -768,6 +783,18 @@ export default function EditorPro({
     popoverEditNodePos,
     popoverLatex,
   ]);
+
+  const submitAICommand = useCallback(() => {
+    if (!editor) return;
+    const prompt = aiCommandPrompt.trim();
+    const mode: InlineMode =
+      editor.state.selection.from === editor.state.selection.to
+        ? "continue"
+        : "rewrite";
+
+    setAiCommandOpen(false);
+    void requestInlineSuggestion(mode, prompt || undefined);
+  }, [aiCommandPrompt, editor, requestInlineSuggestion]);
 
   const submitEnglishPopover = useCallback(async () => {
     const ed = editorRef.current;
@@ -1019,6 +1046,56 @@ export default function EditorPro({
                         }
                       }}>
                       {popoverSubmitLabel}
+                    </Button>
+                  </Group>
+                </Stack>
+              </Popover.Dropdown>
+            </Popover>
+            <Popover
+              opened={aiCommandOpen}
+              withinPortal={false}
+              position="bottom-start"
+              shadow="md"
+              withArrow
+              trapFocus
+              onClose={() => setAiCommandOpen(false)}>
+              <Popover.Target>
+                <div
+                  aria-hidden
+                  style={{
+                    position: "absolute",
+                    left: popoverPosition.x,
+                    top: popoverPosition.y,
+                    width: 1,
+                    height: 1,
+                    pointerEvents: "none",
+                  }}
+                />
+              </Popover.Target>
+              <Popover.Dropdown style={{ width: 360, padding: 8 }}>
+                <Stack gap="xs">
+                  <Text size="xs" fw={700} c="dimmed">
+                    AI Command (Enter to submit)
+                  </Text>
+                  <Textarea
+                    ref={aiCommandInputRef}
+                    autosize
+                    minRows={1}
+                    maxRows={4}
+                    placeholder="Ask AI or press Enter to continue writing..."
+                    value={aiCommandPrompt}
+                    onChange={(e) => setAiCommandPrompt(e.currentTarget.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && !e.shiftKey) {
+                        e.preventDefault();
+                        submitAICommand();
+                      }
+                    }}
+                  />
+                  <Group justify="end">
+                    <Button size="compact-xs" variant="subtle" onClick={() => setAiCommandOpen(false)}>Cancel</Button>
+                    <Button size="compact-xs" onClick={submitAICommand}>
+                      {aiCommandPrompt.trim() ? "Ask AI" : "Continue Writing"}
                     </Button>
                   </Group>
                 </Stack>

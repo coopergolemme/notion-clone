@@ -258,6 +258,7 @@ export function registerAIRoutes(app: FastifyInstance) {
     tone: z.string().default("neutral"),
     maxTokens: z.number().int().min(32).max(512).default(180),
     variants: z.number().int().min(1).max(5).default(1),
+    instruction: z.string().optional(),
     replaceRange: z
       .object({
         from: z.number().int().min(0),
@@ -347,6 +348,7 @@ export function registerAIRoutes(app: FastifyInstance) {
       tone,
       maxTokens,
       variants,
+      instruction,
       replaceRange,
     } = parsed;
 
@@ -358,6 +360,7 @@ export function registerAIRoutes(app: FastifyInstance) {
       mode,
       tone,
       maxTokens,
+      instruction,
     });
     const primaryRaw = await genText(ctx.system, ctx.user);
     const primary = cleanInlineSuggestion(primaryRaw, mode, selectionText);
@@ -400,6 +403,7 @@ export function registerAIRoutes(app: FastifyInstance) {
       tone,
       maxTokens,
       variants,
+      instruction,
       replaceRange,
     } = parsed;
 
@@ -411,6 +415,7 @@ export function registerAIRoutes(app: FastifyInstance) {
       mode,
       tone,
       maxTokens,
+      instruction,
     });
 
     const origin = (req.headers.origin as string | undefined) || "*";
@@ -651,6 +656,7 @@ async function buildInlineSuggestContext({
   mode,
   tone,
   maxTokens,
+  instruction,
 }: {
   pageId?: string;
   selectionText: string;
@@ -659,6 +665,7 @@ async function buildInlineSuggestContext({
   mode: "continue" | "rewrite" | "fix" | "summarize" | "explain";
   tone: string;
   maxTokens: number;
+  instruction?: string;
 }) {
   let pageContext = "";
   if (pageId) {
@@ -692,13 +699,15 @@ async function buildInlineSuggestContext({
   const system = [
     "You are an inline writing assistant for a notes app.",
     "Return plain text only. No markdown fences. No surrounding quotes.",
-    "Keep the suggestion concise and directly usable in the document.",
+    instruction
+      ? "You may include LaTeX math using $...$ for inline and $$...$$ for block equations if requested."
+      : "Keep the suggestion concise and directly usable in the document.",
     `Target tone: ${tone}.`,
     `Maximum length: about ${Math.max(20, Math.floor(maxTokens * 0.75))} words.`,
   ].join(" ");
 
   const user = [
-    `Task: ${taskByMode[mode]}`,
+    instruction ? `User Instruction: ${instruction}` : `Task: ${taskByMode[mode]}`,
     selectionText ? `Selected text:\n${selectionText}` : "Selected text: (none)",
     `Text before cursor:\n${cursorBefore}`,
     `Text after cursor:\n${cursorAfter}`,
